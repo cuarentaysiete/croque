@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Croque — Editor de imágenes en el dominio de frecuencia</title>
+<link rel="icon" type="image/png" href="icon.png">
 <style>
   :root {
     --bg: #0e1016;
@@ -138,7 +139,7 @@
 
 <header>
   <div>
-    <h1><span class="logo">◉ Croque</span> — editor en el dominio de frecuencia</h1>
+    <h1><img src="icon.png" alt="" width="24" height="24" style="border-radius:5px;vertical-align:-4px;margin-right:.35rem"><span class="logo">Croque</span> — editor en el dominio de frecuencia</h1>
     <div class="sub">Pinta sobre el espectro (notch filters) y observa la imagen en tiempo real. Hermitian symmetry included.</div>
   </div>
   <div id="status">Cargando OpenCV.js…</div>
@@ -199,7 +200,6 @@
   y que la IFFT produzca una imagen real.
 </footer>
 
-<script src="https://docs.opencv.org/4.13.0/opencv.js"></script>
 <script>
 "use strict";
 /* ================================================================
@@ -243,6 +243,17 @@ const viewSeg    = document.getElementById("viewSeg");
 function setStatus(msg, cls) {
   statusEl.textContent = msg;
   statusEl.className = cls || "";
+}
+
+// ---------- Cola de trabajo hasta que el runtime OpenCV esté listo ----------
+// OpenCV.js (WebAssembly, ~11 MB) tarda unos segundos en inicializarse.
+// Cualquier operación que necesite `cv` (cargar imagen, cambiar tamaño…)
+// se encola aquí y se ejecuta al arrancar el runtime: así nunca se congela
+// el estado ni se intenta llamar cv.dft() antes de tiempo.
+const readyQueue = [];
+function whenReady(fn) {
+  if (cvReady) fn();
+  else readyQueue.push(fn);
 }
 
 // ---------- Carga de imagen → luminancia ----------
@@ -509,7 +520,7 @@ function loadFromImage(src) {
   refresh();
 }
 
-// Imagen procedural de respaldo si no hay icon.jpg (anillos + rejilla
+// Imagen procedural de respaldo si no hay icon.png (anillos + rejilla
 // + texto: frecuencias muy "fotogénicas" para jugar con el pincel).
 function proceduralImage() {
   const c = document.createElement("canvas");
@@ -571,27 +582,60 @@ document.getElementById("file").addEventListener("change", (e) => {
   if (!f) return;
   setStatus("Cargando imagen…");
   const img = new Image();
-  img.onload = () => loadFromImage(img);
+  img.onload = () => whenReady(() => {
+    try { loadFromImage(img); } catch (err) { setStatus("Error al procesar: " + err.message, "err"); }
+  });
   img.onerror = () => setStatus("No se pudo cargar la imagen ✗", "err");
   img.src = URL.createObjectURL(f);
 });
 
 sizeSel.addEventListener("change", () => {
-  if (lastSource) loadFromImage(lastSource);   // re-FI de la fuente actual
+  if (lastSource) whenReady(() => loadFromImage(lastSource));   // re-FI de la fuente actual
 });
 
-// ---------- Arranque ----------
-// OpenCV.js (WebAssembly) se inicializa asíncronamente: todo el
-// arrastre se envuelve en onRuntimeInitialized para no usar `cv`
-// antes de que el runtime esté listo.
-cv["onRuntimeInitialized"] = () => {
+// ---------- Carga de OpenCV.js con CDNs de respaldo ----------
+// Se carga dinámicamente y, si un CDN falla, se prueba el siguiente.
+// Cuando el runtime está listo se ejecuta la cola de trabajo encolada.
+const CDNS = [
+  "https://docs.opencv.org/4.13.0/opencv.js",
+  "https://docs.opencv.org/4.12.0/opencv.js",
+  "https://docs.opencv.org/4.11.0/opencv.js"
+];
+
+function loadOpenCV(i, onReady, onFail) {
+  if (i >= CDNS.length) { onFail(); return; }
+  setStatus("Cargando OpenCV.js (" + (i + 1) + "/" + CDNS.length + ")…");
+  const s = document.createElement("script");
+  s.src = CDNS[i];
+  s.onload = () => {
+    // El build del CDN define cv.onRuntimeInitialized al terminar el WASM.
+    if (cvReady) onReady();
+    else cv["onRuntimeInitialized"] = () => { onReady(); };
+  };
+  s.onerror = () => { s.remove(); loadOpenCV(i + 1, onReady, onFail); };
+  document.head.appendChild(s);
+}
+
+function onCvReady() {
   cvReady = true;
-  setStatus("Listo ✓ — pinta sobre el espectro");
+  setStatus("Listo ✓ — pinta sobre el espectro", "ok");
+  readyQueue.splice(0).forEach((fn) => { try { fn(); } catch (e) { setStatus("Error: " + e.message, "err"); } });
+  if (lastSource) return;   // el usuario ya ha cargado su propia imagen
   const img = new Image();
-  img.onload = () => loadFromImage(img);
+  img.onload = () => { try { loadFromImage(img); } catch (e) { setStatus("Error: " + e.message, "err"); } };
   img.onerror = () => loadFromImage(proceduralImage());
-  img.src = "icon.jpg";   // imagen por defecto (incluida en el repo)
-};
+  img.src = "icon.png";   // imagen por defecto (icono del proyecto)
+}
+
+function onCvFail() {
+  setStatus("No se pudo cargar OpenCV.js ✗ — comprueba tu conexión y recarga", "err");
+}
+
+loadOpenCV(0, onCvReady, onCvFail);
+// Avisín por si el runtime tarda (el build es grande).
+setTimeout(() => { if (!cvReady) setStatus("Cargando OpenCV.js (~11 MB)…"); }, 2500);
+// Si nada responde a tiempo, el error ya se mostrará vía onerror.
+setTimeout(() => { if (!cvReady && statusEl.className !== "err") setStatus("OpenCV.js aún cargando… (recarga si llevas >30 s)"); }, 30000);
 
 </script>
 </body>
