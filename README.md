@@ -45,5 +45,6 @@ recalcula en cada `requestAnimationFrame` para mantener la sensación de tiempo 
 
 | Archivo | Descripción |
 |---|---|
-| `index.html` | Aplicación completa (HTML + CSS + JS, OpenCV.js por CDN) |
-| `icon.jpg` | Imagen por defecto |
+| `index.html` | Aplicación completa (HTML + CSS + JS, OpenCV.js por CDN con respaldos) |
+| `icon.png` | Icono de la app y imagen de ejemplo por defecto |
+| `icon.jpg` | Imagen de ejemplo alternativa |
