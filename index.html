@@ -364,10 +364,11 @@ function renderSpectrum() {
 }
 
 // ---------- Pincel (notch filter) con simetría hermitiana ----------
-// REGLA CRÍTICA: cada píxel (x, y) afectado se aplica también a su
-// punto espejo (N−1−x, N−1−y), i.e. (−x, −y) respecto al centro.
-// Así el espectro conserva la simetría hermitiana F(−u,−v) = F*(u,v)
-// y la IFFT produce una imagen estrictamente real.
+// REGLA CRÍTICA (simetría hermitiana): el píxel (x, y) representa la
+// frecuencia (x − N/2, y − N/2) respecto al centro; su conjugado
+// hermitiano −(u, v) vive en (N − x, N − y) mod N. Cada píxel afectado
+// se aplica también a esa pareja, de modo que F(−u,−v) = F*(u,v) se
+// conserva y la IFFT produce una imagen estrictamente real.
 function setPixel(i, action) {
   if (action === "restore") { re[i] = re0[i]; im[i] = im0[i]; }
   else if (action === "zero") { re[i] = 0; im[i] = 0; }
@@ -377,8 +378,8 @@ function setPixel(i, action) {
 function applyAt(x, y, action) {
   const i = y * N + x;
   setPixel(i, action);
-  const j = (N - 1 - y) * N + (N - 1 - x);   // punto espejo
-  if (j !== i) setPixel(j, action);
+  const mx = (N - x) % N, my = (N - y) % N;   // pareja conjugada (−x, −y)
+  if (mx !== x || my !== y) setPixel(my * N + mx, action);
 }
 
 // Disco de pincel de radio R centrado en (cx, cy).
