@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Croque — Editor de imágenes en el dominio de frecuencia</title>
+<style>
+  :root {
+    --bg: #0e1016;
+    --panel: #161a23;
+    --panel-2: #1d2230;
+    --border: #2a3145;
+    --text: #e8ecf4;
+    --muted: #8b93a7;
+    --accent: #7c5cff;
+    --accent-2: #22d3ee;
+    --danger: #f43f5e;
+    --radius: 14px;
+    font-size: 15px;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; min-height: 100vh;
+    background: radial-gradient(1200px 700px at 70% -10%, #1a2033 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  body { display: flex; flex-direction: column; }
+
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: .5rem;
+    padding: 1rem 1.4rem .6rem;
+  }
+  header h1 { font-size: 1.25rem; margin: 0; letter-spacing: .02em; }
+  header h1 .logo { color: var(--accent); }
+  header .sub { color: var(--muted); font-size: .85rem; }
+  #status {
+    font-size: .8rem; color: var(--accent-2);
+    padding: .3rem .7rem; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--panel);
+    transition: color .2s;
+  }
+  #status.ok { color: #34d399; }
+  #status.err { color: var(--danger); }
+
+  /* ---------- Barra de controles ---------- */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: .7rem 1.1rem;
+    align-items: center;
+    padding: .4rem 1.4rem 1rem;
+  }
+  .ctrl {
+    display: flex; align-items: center; gap: .45rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .4rem .6rem;
+  }
+  .ctrl label, .ctrl .lbl { color: var(--muted); font-size: .8rem; }
+  select, input[type="range"] { accent-color: var(--accent); }
+  select {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: .25rem .4rem;
+  }
+  input[type="range"] { width: 110px; }
+  .val { font-variant-numeric: tabular-nums; color: var(--text); font-size: .8rem; min-width: 2.2em; }
+
+  button, .file-btn {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: .45rem .8rem; font-size: .85rem; cursor: pointer;
+    transition: border-color .15s, background .15s, transform .05s;
+  }
+  button:hover, .file-btn:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover { background: #8d70ff; }
+  .file-btn input[type="file"] { display: none; }
+
+  .seg {
+    display: flex; border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .seg button {
+    border: 0; border-radius: 0; background: var(--panel);
+    padding: .45rem .8rem; font-size: .85rem; color: var(--muted);
+  }
+  .seg button.on { background: var(--accent); color: #fff; }
+
+  /* ---------- Paneles ---------- */
+  main.panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    padding: 0 1.4rem 1.2rem;
+    flex: 1;
+  }
+  @media (max-width: 920px) {
+    main.panels { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: .8rem;
+    display: flex; flex-direction: column; gap: .6rem;
+    min-width: 0;
+  }
+  .panel h2 {
+    margin: 0; font-size: .9rem; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel h2 .tag {
+    font-size: .7rem; text-transform: none; letter-spacing: 0;
+    color: var(--accent-2); border: 1px solid var(--border);
+    padding: .15rem .5rem; border-radius: 999px;
+  }
+  .canvas-wrap {
+    position: relative;
+    aspect-ratio: 1;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .canvas-wrap canvas {
+    width: 100%; height: 100%; display: block;
+    image-rendering: auto;
+  }
+  #freq.canvas-host { cursor: crosshair; }
+  footer {
+    padding: 0 1.4rem 1rem; color: var(--muted); font-size: .78rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1><span class="logo">◉ Croque</span> — editor en el dominio de frecuencia</h1>
+    <div class="sub">Pinta sobre el espectro (notch filters) y observa la imagen en tiempo real. Hermitian symmetry included.</div>
+  </div>
+  <div id="status">Cargando OpenCV.js…</div>
+</header>
+
+<div class="controls">
+  <label class="file-btn">Cargar imagen <input type="file" id="file" accept="image/*"></label>
+
+  <div class="ctrl">
+    <label for="size">Resolución FFT</label>
+    <select id="size">
+      <option value="128">128 × 128</option>
+      <option value="256">256 × 256</option>
+      <option value="512" selected>512 × 512</option>
+    </select>
+  </div>
+
+  <div class="ctrl">
+    <label for="brush">Pincel</label>
+    <input type="range" id="brush" min="2" max="80" value="14">
+    <span class="val" id="brushVal">14</span>
+  </div>
+
+  <div class="ctrl">
+    <label for="action">Acción</label>
+    <select id="action">
+      <option value="atten" selected>Atenuar ×10 %</option>
+      <option value="zero">Anular (muesca)</option>
+      <option value="restore">Restaurar</option>
+    </select>
+  </div>
+
+  <div class="seg" id="viewSeg">
+    <button data-view="mag" class="on">Magnitud (log)</button>
+    <button data-view="phase">Fase</button>
+  </div>
+
+  <button id="lp" title="Mantener solo el círculo central">Paso-Bajo</button>
+  <button id="hp" title="Mantener solo el anillo exterior">Paso-Alto</button>
+  <button id="reset">Restaurar todo</button>
+  <button id="download" class="primary">Descargar PNG</button>
+</div>
+
+<main class="panels">
+  <section class="panel">
+    <h2>Dominio espacial <span class="tag" id="spTag">—</span></h2>
+    <div class="canvas-wrap"><canvas id="spatial"></canvas></div>
+  </section>
+  <section class="panel">
+    <h2>Dominio de frecuencia <span class="tag">pinta aquí</span></h2>
+    <div class="canvas-wrap" id="freq.canvas-host"><canvas id="freq"></canvas></div>
+  </section>
+</main>
+
+<footer>
+  Todo el procesado ocurre en el navegador (WebAssembly · OpenCV.js).
+  Cada trazo se replica en (−x, −y) respecto al centro para conservar la simetría hermitiana
+  y que la IFFT produzca una imagen real.
+</footer>
+
+<script src="https://docs.opencv.org/4.13.0/opencv.js"></script>
+<script>
+"use strict";
+/* ================================================================
+ * CROQUE — Editor de imágenes en el dominio de frecuencia
+ * ------------------------------------------------------------
+ * Pipeline:
+ *   imagen → luminancia gris N×N (potencia de 2)
+ *        → FFT 2D directa  (cv.dft)
+ *        → fftshift (DC al centro)
+ *        → edición interactiva del espectro complejo (pincel + presets)
+ *        → ifftshift + IFFT 2D (cv.idft)
+ *        → normalización 0..255 → canvas espacial
+ * Cada operación sobre el espectro se replica en el punto espejo
+ * (−x, −y) respecto al centro (simetría hermitiana) para que la
+ * IFFT produzca siempre una imagen estrictamente real.
+ * ================================================================ */
+
+// ---------- Estado global ----------
+let N = 512;                 // lado de la FFT (potencia de 2)
+let cvReady = false;
+let hasImage = false;
+let view = "mag";            // "mag" (log) | "phase"
+let re, im;                  // espectro complejo CENTRADO (post-fftshift)
+let re0, im0;                // copia original (para "restaurar")
+let logMagMax = 1;           // escala log fija, calculada con la imagen original
+let lastSource = null;       // imagen/canvas cargada más reciente
+
+// ---------- DOM ----------
+const statusEl = document.getElementById("status");
+const spatial  = document.getElementById("spatial");
+const freq     = document.getElementById("freq");
+const sctx = spatial.getContext("2d");
+const fctx = freq.getContext("2d");
+const spTag  = document.getElementById("spTag");
+const sizeSel    = document.getElementById("size");
+const brushSel   = document.getElementById("brush");
+const brushVal   = document.getElementById("brushVal");
+const actionSel  = document.getElementById("action");
+const viewSeg    = document.getElementById("viewSeg");
+
+function setStatus(msg, cls) {
+  statusEl.textContent = msg;
+  statusEl.className = cls || "";
+}
+
+// ---------- Carga de imagen → luminancia ----------
+// Redimensiona la fuente a N×N y extrae la luminancia BT.601
+// (0.299·R + 0.587·G + 0.114·B) en un Float32Array.
+function imageToLuminance(src) {
+  const c = document.createElement("canvas");
+  c.width = c.height = N;
+  const cx = c.getContext("2d");
+  cx.imageSmoothingQuality = "high";
+  cx.drawImage(src, 0, 0, N, N);
+  const data = cx.getImageData(0, 0, N, N).data;
+  const gray = new Float32Array(N * N);
+  for (let i = 0, p = 0; i < gray.length; i++, p += 4)
+    gray[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+  return gray;
+}
+
+// ---------- fftshift / ifftshift ----------
+// Desplaza la matriz 2D N/2 filas y N/2 columnas. Como el desplazamiento
+// es exactamente la mitad, la operación es su propia inversa: la misma
+// función sirve para centrar (fftshift) y recentrar (ifftshift).
+// (y + N/2) % N se calcula con máscara porque N es potencia de 2.
+function halfShift(srcRe, srcIm, dstRe, dstIm) {
+  const H = N >> 1, mask = N - 1;
+  for (let y = 0; y < N; y++) {
+    const sRow = ((y + H) & mask) * N;
+    const dRow = y * N;
+    for (let x = 0; x < N; x++) {
+      const s = sRow + ((x + H) & mask);
+      const d = dRow + x;
+      dstRe[d] = srcRe[s];
+      dstIm[d] = srcIm[s];
+    }
+  }
+}
+
+// ---------- FFT directa (carga / cambio de imagen) ----------
+// Entrada: Float32Array de luminancia N×N.
+// Salida: re/im CENTRADOS (fftshift) + copia de respaldo + escala log.
+function forwardFFT(gray) {
+  // Matriz compleja de entrada: real = luminancia, imaginaria = 0.
+  const buf = new Float32Array(2 * N * N);
+  for (let i = 0; i < N * N; i++) buf[2 * i] = gray[i];
+  const src = new cv.Mat(N, N, cv.CV_32FC2, buf);
+  const dst = new cv.Mat();
+  cv.dft(src, dst);                       // FFT 2D
+  src.delete();
+
+  const ur = new Float32Array(N * N), ui = new Float32Array(N * N);
+  const d = dst.data32S;                 // interleaved (real, imag)
+  for (let i = 0, j = 0; i < N * N; i++, j += 2) { ur[i] = d[j]; ui[i] = d[j + 1]; }
+  dst.delete();
+
+  re = new Float32Array(N * N); im = new Float32Array(N * N);
+  halfShift(ur, ui, re, im);             // fftshift → DC al centro
+  re0 = new Float32Array(re); im0 = new Float32Array(im);
+
+  // Escala log fixa (maximo de la magnitud original): evita que el
+  // espectro se "auto-clarifique" mientras atenuamos zonas.
+  logMagMax = 1e-6;
+  for (let i = 0; i < re.length; i++)
+    logMagMax = Math.max(logMagMax, Math.log1p(Math.hypot(re[i], im[i])));
+}
+
+// ---------- IFFT (cada ciclo de pintura) ----------
+// Descentra (ifftshift), aplica cv.idft, normaliza el parte real a
+// 0..255 y dibuja en el canvas del dominio espacial.
+function inverseFFT() {
+  const ur = new Float32Array(N * N), ui = new Float32Array(N * N);
+  halfShift(re, im, ur, ui);             // ifftshift (misma op. que fftshift)
+
+  const buf = new Float32Array(2 * N * N);
+  for (let i = 0; i < N * N; i++) { buf[2 * i] = ur[i]; buf[2 * i + 1] = ui[i]; }
+  const src = new cv.Mat(N, N, cv.CV_32FC2, buf);
+  const dst = new cv.Mat();
+  cv.idft(src, dst);
+  src.delete();
+
+  // Normaliza al rango 0..255 (min-max) y pinta.
+  const d = dst.data32S;
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0, j = 0; i < N * N; i++, j += 2) {
+    const v = d[j];
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  }
+  const scale = (mx - mn) > 1e-9 ? 255 / (mx - mn) : 1;
+  const img = sctx.createImageData(N, N);
+  for (let i = 0, p = 0; i < N * N; i++, p += 4) {
+    const v = (d[2 * i] - mn) * scale;
+    img.data[p] = img.data[p + 1] = img.data[p + 2] = v;
+    img.data[p + 3] = 255;
+  }
+  dst.delete();
+  sctx.putImageData(img, 0, 0);
+}
+
+// ---------- Render del espectro (derecha) ----------
+// Magnitud: log(1+|F|) normalizado por la escala original.
+// Fase: atan2(Im, Re) en (−π, π] mapeada a gris.
+function renderSpectrum() {
+  const img = fctx.createImageData(N, N);
+  const d = img.data;
+  if (view === "mag") {
+    for (let i = 0, p = 0; i < N * N; i++, p += 4) {
+      const v = Math.log1p(Math.hypot(re[i], im[i])) / logMagMax * 255;
+      d[p] = d[p + 1] = d[p + 2] = v;
+      d[p + 3] = 255;
+    }
+  } else {
+    for (let i = 0, p = 0; i < N * N; i++, p += 4) {
+      const v = (Math.atan2(im[i], re[i]) + Math.PI) * (255 / (2 * Math.PI));
+      d[p] = d[p + 1] = d[p + 2] = v;
+      d[p + 3] = 255;
+    }
+  }
+  fctx.putImageData(img, 0, 0);
+}
+
+// ---------- Pincel (notch filter) con simetría hermitiana ----------
+// REGLA CRÍTICA: cada píxel (x, y) afectado se aplica también a su
+// punto espejo (N−1−x, N−1−y), i.e. (−x, −y) respecto al centro.
+// Así el espectro conserva la simetría hermitiana F(−u,−v) = F*(u,v)
+// y la IFFT produce una imagen estrictamente real.
+function setPixel(i, action) {
+  if (action === "restore") { re[i] = re0[i]; im[i] = im0[i]; }
+  else if (action === "zero") { re[i] = 0; im[i] = 0; }
+  else { re[i] *= 0.1; im[i] *= 0.1; }   // atenuación fuerte acumulable
+}
+
+function applyAt(x, y, action) {
+  const i = y * N + x;
+  setPixel(i, action);
+  const j = (N - 1 - y) * N + (N - 1 - x);   // punto espejo
+  if (j !== i) setPixel(j, action);
+}
+
+// Disco de pincel de radio R centrado en (cx, cy).
+function paint(cx, cy, R) {
+  const action = actionSel.value;
+  const R2 = R * R, c = Math.round(N / 2);
+  for (let dy = -R; dy <= R; dy++) {
+    const y = Math.round(cy) + dy;
+    if (y < 0 || y >= N) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      if (dx * dx + dy * dy > R2) continue;
+      const x = Math.round(cx) + dx;
+      if (x < 0 || x >= N) continue;
+      applyAt(x, y, action);
+    }
+  }
+}
+
+// ---------- Cola de pintura + requestAnimationFrame ----------
+// Los movimientos del ratón se acumulan; por frame se pintan todos
+// los puntos pendientes y se recalcula IFFT + espectro UNA sola vez.
+let rafPending = false;
+const pending = [];
+
+function queueUpdate() {
+  if (rafPending || !hasImage || !cvReady) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    if (!hasImage) return;
+    const R = parseInt(brushSel.value, 10);
+    for (const p of pending) paint(p.x, p.y, R);
+    pending.length = 0;
+    renderSpectrum();
+    inverseFFT();
+  });
+}
+
+// Actualización inmediata (presets, reset, cambio de vista).
+function refresh() {
+  if (!hasImage || !cvReady) return;
+  renderSpectrum();
+  inverseFFT();
+}
+
+// Eventos de puntero sobre el canvas de frecuencia.
+let painting = false;
+let lastPt = null;
+
+function canvasCoords(e) {
+  const r = freq.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) / r.width * N,
+    y: (e.clientY - r.top) / r.height * N
+  };
+}
+
+freq.addEventListener("pointerdown", (e) => {
+  if (!hasImage || !cvReady) return;
+  e.preventDefault();
+  painting = true;
+  freq.setPointerCapture(e.pointerId);
+  lastPt = canvasCoords(e);
+  pending.push(lastPt);
+  queueUpdate();
+});
+
+freq.addEventListener("pointermove", (e) => {
+  if (!painting) return;
+  const pt = canvasCoords(e);
+  // Interpola el trazo para que no queden huecos con ratones rápidos.
+  const dx = pt.x - lastPt.x, dy = pt.y - lastPt.y;
+  const dist = Math.hypot(dx, dy);
+  const steps = Math.max(1, Math.ceil(dist / 2));
+  for (let s = 1; s <= steps; s++)
+    pending.push({ x: lastPt.x + dx * s / steps, y: lastPt.y + dy * s / steps });
+  lastPt = pt;
+  queueUpdate();
+});
+
+const stopPaint = () => { painting = false; };
+freq.addEventListener("pointerup", stopPaint);
+freq.addEventListener("pointercancel", stopPaint);
+
+// ---------- Presets ----------
+// Paso-bajo: conserva el disco central con borde coseno suave
+// (evita el ringing de Gibbs del corte abrupto). Paso-alto: lo opuesto.
+function applyRadial(lowPass) {
+  const c = (N - 1) / 2, R = N * 0.15, band = N * 0.04;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const r = Math.hypot(x - c, y - c);
+      let t;                                    // factor de atenuación 0..1
+      if (lowPass) {
+        t = r < R ? 0
+          : r < R + band ? 1 - (1 - Math.cos(Math.PI * (r - R) / band)) / 2
+          : 1;
+      } else {
+        t = r > R ? 0
+          : r > R - band ? (1 - Math.cos(Math.PI * (R - r) / band)) / 2
+          : 1;
+      }
+      if (t === 0) continue;
+      const i = y * N + x;
+      re[i] *= 1 - t;
+      im[i] *= 1 - t;
+    }
+  }
+  refresh();
+}
+
+// ---------- Carga y preparación ----------
+function setCanvasSizes() {
+  spatial.width = spatial.height = N;
+  freq.width = freq.height = N;
+}
+
+function loadFromImage(src) {
+  N = parseInt(sizeSel.value, 10);
+  setCanvasSizes();
+  lastSource = src;
+  const gray = imageToLuminance(src);
+  forwardFFT(gray);
+  hasImage = true;
+  spTag.textContent = N + " × " + N;
+  setStatus("Listo ✓", "ok");
+  refresh();
+}
+
+// Imagen procedural de respaldo si no hay icon.jpg (anillos + rejilla
+// + texto: frecuencias muy "fotogénicas" para jugar con el pincel).
+function proceduralImage() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 512;
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 512, 512);
+  g.addColorStop(0, "#0a0c12");
+  g.addColorStop(1, "#3b2a66");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 512, 512);
+  x.strokeStyle = "rgba(255,255,255,.75)";
+  for (let r = 14; r < 300; r += 12) { x.beginPath(); x.arc(256, 256, r, 0, 7); x.lineWidth = 3; x.stroke(); }
+  x.strokeStyle = "rgba(34,211,238,.6)";
+  for (let i = 0; i < 512; i += 32) {
+    x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 512); x.lineWidth = 1; x.stroke();
+    x.beginPath(); x.moveTo(0, i); x.lineTo(512, i); x.stroke();
+  }
+  x.font = "bold 96px sans-serif";
+  x.fillStyle = "#fff";
+  x.textAlign = "center";
+  x.fillText("CROQUE", 256, 288);
+  return c;
+}
+
+// ---------- Cableado de la UI ----------
+brushSel.addEventListener("input", () => { brushVal.textContent = brushSel.value; });
+
+viewSeg.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-view]");
+  if (!btn) return;
+  view = btn.dataset.view;
+  for (const b of viewSeg.querySelectorAll("button"))
+    b.classList.toggle("on", b === btn);
+  refresh();
+});
+
+document.getElementById("lp").addEventListener("click", () => applyRadial(true));
+document.getElementById("hp").addEventListener("click", () => applyRadial(false));
+document.getElementById("reset").addEventListener("click", () => {
+  if (!hasImage) return;
+  re.set(re0);
+  im.set(im0);
+  refresh();
+});
+
+document.getElementById("download").addEventListener("click", () => {
+  if (!hasImage) return;
+  spatial.toBlob((b) => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = "croque-resultado.png";
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  });
+});
+
+document.getElementById("file").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  setStatus("Cargando imagen…");
+  const img = new Image();
+  img.onload = () => loadFromImage(img);
+  img.onerror = () => setStatus("No se pudo cargar la imagen ✗", "err");
+  img.src = URL.createObjectURL(f);
+});
+
+sizeSel.addEventListener("change", () => {
+  if (lastSource) loadFromImage(lastSource);   // re-FI de la fuente actual
+});
+
+// ---------- Arranque ----------
+// OpenCV.js (WebAssembly) se inicializa asíncronamente: todo el
+// arrastre se envuelve en onRuntimeInitialized para no usar `cv`
+// antes de que el runtime esté listo.
+cv["onRuntimeInitialized"] = () => {
+  cvReady = true;
+  setStatus("Listo ✓ — pinta sobre el espectro");
+  const img = new Image();
+  img.onload = () => loadFromImage(img);
+  img.onerror = () => loadFromImage(proceduralImage());
+  img.src = "icon.jpg";   // imagen por defecto (incluida en el repo)
+};
+
+</script>
+</body>
+</html>
