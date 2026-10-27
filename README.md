@@ -1,50 +1,67 @@
 # ◉ Croque
 
-Editor de imágenes en el **dominio de frecuencia** para el navegador: pinta sobre el
-espectro (muescas / notch filters) y observa el resultado en tiempo real.
+A **frequency-domain** image editor for the browser: paint on the spectrum
+(notch filters) and watch the result update in real time.
 
-Prototipo ligero de un solo archivo — HTML, CSS y JS embebidos, sin frameworks ni
-build steps. Todo el procesado corre en el cliente con **HTML5 Canvas** y un motor **FFT
-puro JavaScript** (sin librerías externas).
+Single-file lightweight prototype — HTML, CSS and JS all embedded, no frameworks,
+no build steps. Everything runs client-side with **HTML5 Canvas** and a **pure
+JavaScript FFT engine** (no external libraries).
 
-## Cómo usar
+## How to use
 
-Solo abre `index.html` en un navegador moderno (Chrome, Edge, Firefox, Safari).
-Opcionalmente, sirve la carpeta para evitar restricciones de `file://`:
+Just open `index.html` in a modern browser (Chrome, Edge, Firefox, Safari).
+Optionally serve the folder to avoid `file://` restrictions:
 
 ```bash
 npx serve .
-# o
+# or
 python3 -m http.server 8000
 ```
 
-1. (Opcional) **Cargar imagen** — cualquier foto; por defecto se carga `icon.jpg`.
-2. **Pinta** sobre el canvas derecho (espectro): cada trazo atenúa el espectro y se
-   **replica automáticamente en el punto espejo** `(−x, −y)` respecto al centro
-   (simetría hermitiana), de modo que la IFFT devuelve siempre una imagen real.
-3. Ajusta el **pincel**, elige la **acción** (atenuar ×10 %, anular, restaurar) y
-   alterna la vista entre **Magnitud (log)** y **Fase**.
-4. Prueba los **presets** Paso-Bajo / Paso-Alto (con borde coseno suave anti-ringing),
-   **Restaurar todo**, y **Descargar PNG** del resultado.
+1. (Optional) **Load image** — any photo; the bundled `icon.png` is loaded by default.
+2. **Paint** on the right canvas (spectrum): every stroke attenuates the spectrum
+   and is **automatically mirrored at `(−x, −y)`** about the center
+   (Hermitian symmetry), so the IFFT always yields a real image.
+3. Tune the **brush size**, pick the **action** (attenuate ×10 %, null, restore)
+   and switch the view between **Magnitude (log)** and **Phase**.
+4. Try the **Low-Pass** / **High-Pass** presets (with a smooth cosine edge to avoid
+   ringing), **Reset all**, and **Download PNG** of the result.
 
 ## Pipeline
 
 ```
-imagen → luminancia N×N (potencia de 2)
-     → FFT 2D (cv.dft)
-     → fftshift (DC al centro)
-     → edición interactiva (pincel + presets)
-     → ifftshift → IFFT 2D (cv.idft)
-     → normalización 0..255 → canvas espacial
+image → luminance N×N (power of two)
+     → 2D FFT (pure-JS Cooley–Tukey)
+     → fftshift (DC to center)
+     → interactive editing (brush + presets)
+     → ifftshift → 2D IFFT
+     → 0..255 normalization → spatial canvas
 ```
 
-La resolución de la FFT (128/256/512) es ajustable; a 512 × 512 la IFFT se
-recalcula en cada `requestAnimationFrame` para mantener la sensación de tiempo real.
+The FFT resolution (128/256/512) is selectable. At 512×512 the IFFT is recomputed
+every `requestAnimationFrame` (~40 ms each) to keep the feel real-time.
 
-## Archivos
+## Design notes
 
-| Archivo | Descripción |
+- **Pure JS FFT** (radix-2 Cooley–Tukey with precomputed twiddles and bit-reversal
+  permutation, reusable buffers): forward/inverse 512×512 in ~40 ms. No OpenCV.js
+  — the public builds of that library don't ship the `dft`/`idft` module.
+- **Hermitian symmetry**: every edit writes the conjugate value to the mirrored
+  point `(N−x, N−y) mod N`, keeping the inverse transform strictly real.
+- **Log-magnitude display**: `L = 1 + ln(1+|F|) / ln(1+max)` with a dark→cyan
+  colormap; the phase view is a gray-scale of the raw phase.
+- **Cosine filter edges** in the presets to reduce ringing (Gibbs) artifacts.
+- **No server, no installation, no network**: it works fully offline, even from
+  `file://`.
+
+## Files
+
+| File | Description |
 |---|---|
-| `index.html` | Aplicación completa (HTML + CSS + JS, FFT pura en JS, sin dependencias) |
-| `icon.png` | Icono de la app y imagen de ejemplo por defecto |
-| `icon.jpg` | Imagen de ejemplo alternativa |
+| `index.html` | Complete application (HTML + CSS + JS, self-contained FFT, zero dependencies) |
+| `icon.png` | App icon and default example image |
+| `icon.jpg` | Alternative example image (JPEG) |
+
+## License
+
+MIT — see [LICENSE](LICENSE).
