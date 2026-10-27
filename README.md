@@ -4,8 +4,8 @@ Editor de imágenes en el **dominio de frecuencia** para el navegador: pinta sob
 espectro (muescas / notch filters) y observa el resultado en tiempo real.
 
 Prototipo ligero de un solo archivo — HTML, CSS y JS embebidos, sin frameworks ni
-build steps. Todo el procesado corre en el cliente con **HTML5 Canvas + OpenCV.js**
-(WebAssembly, cargado por CDN).
+build steps. Todo el procesado corre en el cliente con **HTML5 Canvas** y un motor **FFT
+puro JavaScript** (sin librerías externas).
 
 ## Cómo usar
 
@@ -45,6 +45,6 @@ recalcula en cada `requestAnimationFrame` para mantener la sensación de tiempo 
 
 | Archivo | Descripción |
 |---|---|
-| `index.html` | Aplicación completa (HTML + CSS + JS, OpenCV.js por CDN con respaldos) |
+| `index.html` | Aplicación completa (HTML + CSS + JS, FFT pura en JS, sin dependencias) |
 | `icon.png` | Icono de la app y imagen de ejemplo por defecto |
 | `icon.jpg` | Imagen de ejemplo alternativa |

@@ -142,7 +142,7 @@
     <h1><img src="icon.png" alt="" width="24" height="24" style="border-radius:5px;vertical-align:-4px;margin-right:.35rem"><span class="logo">Croque</span> — editor en el dominio de frecuencia</h1>
     <div class="sub">Pinta sobre el espectro (notch filters) y observa la imagen en tiempo real. Hermitian symmetry included.</div>
   </div>
-  <div id="status">Cargando OpenCV.js…</div>
+  <div id="status">Preparando…</div>
 </header>
 
 <div class="controls">
@@ -195,7 +195,8 @@
 </main>
 
 <footer>
-  Todo el procesado ocurre en el navegador (WebAssembly · OpenCV.js).
+  Todo el procesado ocurre en el navegador: motor FFT 2D propio en JavaScript puro,
+  sin librerías externas (funciona offline y desde <code>file://</code>).
   Cada trazo se replica en (−x, −y) respecto al centro para conservar la simetría hermitiana
   y que la IFFT produzca una imagen real.
 </footer>
@@ -207,10 +208,10 @@
  * ------------------------------------------------------------
  * Pipeline:
  *   imagen → luminancia gris N×N (potencia de 2)
- *        → FFT 2D directa  (cv.dft)
+ *        → FFT 2D directa  (motor propio Cooley–Tukey)
  *        → fftshift (DC al centro)
  *        → edición interactiva del espectro complejo (pincel + presets)
- *        → ifftshift + IFFT 2D (cv.idft)
+ *        → ifftshift + IFFT 2D
  *        → normalización 0..255 → canvas espacial
  * Cada operación sobre el espectro se replica en el punto espejo
  * (−x, −y) respecto al centro (simetría hermitiana) para que la
@@ -219,13 +220,14 @@
 
 // ---------- Estado global ----------
 let N = 512;                 // lado de la FFT (potencia de 2)
-let cvReady = false;
+let appReady = true;   // todo el procesado es local: sin dependencias externas
 let hasImage = false;
 let view = "mag";            // "mag" (log) | "phase"
 let re, im;                  // espectro complejo CENTRADO (post-fftshift)
 let re0, im0;                // copia original (para "restaurar")
 let logMagMax = 1;           // escala log fija, calculada con la imagen original
 let lastSource = null;       // imagen/canvas cargada más reciente
+let workRe, workIm;          // buffers reutilizables de la IFFT
 
 // ---------- DOM ----------
 const statusEl = document.getElementById("status");
@@ -245,16 +247,10 @@ function setStatus(msg, cls) {
   statusEl.className = cls || "";
 }
 
-// ---------- Cola de trabajo hasta que el runtime OpenCV esté listo ----------
-// OpenCV.js (WebAssembly, ~11 MB) tarda unos segundos en inicializarse.
-// Cualquier operación que necesite `cv` (cargar imagen, cambiar tamaño…)
-// se encola aquí y se ejecuta al arrancar el runtime: así nunca se congela
-// el estado ni se intenta llamar cv.dft() antes de tiempo.
-const readyQueue = [];
-function whenReady(fn) {
-  if (cvReady) fn();
-  else readyQueue.push(fn);
-}
+// ---------- Cola de trabajo ----------
+// Queda como gancho por si en el futuro añadimos algo asíncrono; hoy
+// todo se resuelve en el spot.
+function whenReady(fn) { fn(); }
 
 // ---------- Carga de imagen → luminancia ----------
 // Redimensiona la fuente a N×N y extrae la luminancia BT.601
@@ -265,7 +261,9 @@ function imageToLuminance(src) {
   const cx = c.getContext("2d");
   cx.imageSmoothingQuality = "high";
   cx.drawImage(src, 0, 0, N, N);
-  const data = cx.getImageData(0, 0, N, N).data;
+  let data;
+  try { data = cx.getImageData(0, 0, N, N).data; }
+  catch { throw new Error("canvas contaminado por datos cross-origin; usa una imagen local o servida con CORS"); }
   const gray = new Float32Array(N * N);
   for (let i = 0, p = 0; i < gray.length; i++, p += 4)
     gray[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
@@ -291,25 +289,82 @@ function halfShift(srcRe, srcIm, dstRe, dstIm) {
   }
 }
 
+// ---------- Motor FFT 2D (Cooley–Tukey radix-2, sin dependencias) ----------
+// Los builds públicos de OpenCV.js no incluyen el módulo dft, así que la
+// transformada vive aquí: FFT 1D in-place (permutación bit-reverse +
+// mariposas con twiddles precomputados por tamaño) aplicada a filas y a
+// columnas. 512×512 corre en una decena de ms, suficiente para "tiempo
+// real" vía requestAnimationFrame.
+function prepFFT() {
+  const half = N >> 1;
+  twRe = new Float32Array(half);
+  twIm = new Float32Array(half);
+  for (let k = 0; k < half; k++) {
+    twRe[k] = Math.cos(2 * Math.PI * k / N);
+    twIm[k] = Math.sin(2 * Math.PI * k / N);
+  }
+  const bits = Math.log2(N);
+  rev = new Uint32Array(N);
+  for (let i = 0; i < N; i++) {
+    let r = 0, v = i;
+    for (let b = 0; b < bits; b++) { r = (r << 1) | (v & 1); v >>= 1; }
+    rev[i] = r;
+  }
+  workRe = new Float32Array(N * N);
+  workIm = new Float32Array(N * N);
+}
+let twRe, twIm, rev;   // twiddles + permutación (se (re)crean en prepFFT)
+
+// FFT 1D in-place sobre [re, im] empezando en `off` y con `stride`
+// entre elementos (stride=1 → filas, stride=N → columnas).
+function fft1D(re, im, off, stride, invert) {
+  for (let i = 0; i < N; i++) {
+    const r = rev[i];
+    if (r > i) {
+      const a = off + i * stride, b = off + r * stride;
+      let t = re[a]; re[a] = re[b]; re[b] = t;
+      t = im[a]; im[a] = im[b]; im[b] = t;
+    }
+  }
+  for (let len = 2; len <= N; len <<= 1) {
+    const half = len >> 1, step = N / len;
+    for (let i = 0; i < N; i += len) {
+      for (let j = 0; j < half; j++) {
+        const k = j * step;
+        const wr = twRe[k], wi = invert ? twIm[k] : -twIm[k];
+        const a = off + (i + j) * stride, b = a + half * stride;
+        const xr = re[b] * wr - im[b] * wi;
+        const xi = re[b] * wi + im[b] * wr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi;
+        re[a] += xr;        im[a] += xi;
+      }
+    }
+  }
+}
+
+// FFT 2D = FFT de filas + FFT de columnas. La inversa escala por 1/N²
+// para que IFFT(FFT(x)) = x.
+function fft2D(re, im, invert) {
+  for (let y = 0; y < N; y++) fft1D(re, im, y * N, 1, invert);
+  for (let x = 0; x < N; x++) fft1D(re, im, x, N, invert);
+  if (invert) {
+    const s = 1 / (N * N);
+    for (let i = 0; i < re.length; i++) { re[i] *= s; im[i] *= s; }
+  }
+}
+
 // ---------- FFT directa (carga / cambio de imagen) ----------
 // Entrada: Float32Array de luminancia N×N.
 // Salida: re/im CENTRADOS (fftshift) + copia de respaldo + escala log.
 function forwardFFT(gray) {
-  // Matriz compleja de entrada: real = luminancia, imaginaria = 0.
-  const buf = new Float32Array(2 * N * N);
-  for (let i = 0; i < N * N; i++) buf[2 * i] = gray[i];
-  const src = new cv.Mat(N, N, cv.CV_32FC2, buf);
-  const dst = new cv.Mat();
-  cv.dft(src, dst);                       // FFT 2D
-  src.delete();
+  // Complejo de entrada: real = luminancia, imaginaria = 0.
+  re = new Float32Array(gray);
+  im = new Float32Array(N * N);
+  fft2D(re, im, false);                        // FFT 2D directa
 
-  const ur = new Float32Array(N * N), ui = new Float32Array(N * N);
-  const d = dst.data32S;                 // interleaved (real, imag)
-  for (let i = 0, j = 0; i < N * N; i++, j += 2) { ur[i] = d[j]; ui[i] = d[j + 1]; }
-  dst.delete();
-
-  re = new Float32Array(N * N); im = new Float32Array(N * N);
-  halfShift(ur, ui, re, im);             // fftshift → DC al centro
+  const rc = new Float32Array(N * N), ic = new Float32Array(N * N);
+  halfShift(re, im, rc, ic);                  // fftshift → DC al centro
+  re = rc; im = ic;
   re0 = new Float32Array(re); im0 = new Float32Array(im);
 
   // Escala log fixa (maximo de la magnitud original): evita que el
@@ -320,35 +375,26 @@ function forwardFFT(gray) {
 }
 
 // ---------- IFFT (cada ciclo de pintura) ----------
-// Descentra (ifftshift), aplica cv.idft, normaliza el parte real a
-// 0..255 y dibuja en el canvas del dominio espacial.
+// Descentra (ifftshift) en buffers reutilizables, aplica la IFFT 2D,
+// normaliza la parte real a 0..255 y dibuja en el canvas espacial.
 function inverseFFT() {
-  const ur = new Float32Array(N * N), ui = new Float32Array(N * N);
-  halfShift(re, im, ur, ui);             // ifftshift (misma op. que fftshift)
-
-  const buf = new Float32Array(2 * N * N);
-  for (let i = 0; i < N * N; i++) { buf[2 * i] = ur[i]; buf[2 * i + 1] = ui[i]; }
-  const src = new cv.Mat(N, N, cv.CV_32FC2, buf);
-  const dst = new cv.Mat();
-  cv.idft(src, dst);
-  src.delete();
+  halfShift(re, im, workRe, workIm);        // ifftshift (misma op. que fftshift)
+  fft2D(workRe, workIm, true);              // IFFT 2D (ya escala por 1/N²)
 
   // Normaliza al rango 0..255 (min-max) y pinta.
-  const d = dst.data32S;
   let mn = Infinity, mx = -Infinity;
-  for (let i = 0, j = 0; i < N * N; i++, j += 2) {
-    const v = d[j];
+  for (let i = 0; i < workRe.length; i++) {
+    const v = workRe[i];
     if (v < mn) mn = v;
     if (v > mx) mx = v;
   }
   const scale = (mx - mn) > 1e-9 ? 255 / (mx - mn) : 1;
   const img = sctx.createImageData(N, N);
   for (let i = 0, p = 0; i < N * N; i++, p += 4) {
-    const v = (d[2 * i] - mn) * scale;
+    const v = (workRe[i] - mn) * scale;
     img.data[p] = img.data[p + 1] = img.data[p + 2] = v;
     img.data[p + 3] = 255;
   }
-  dst.delete();
   sctx.putImageData(img, 0, 0);
 }
 
@@ -416,7 +462,7 @@ let rafPending = false;
 const pending = [];
 
 function queueUpdate() {
-  if (rafPending || !hasImage || !cvReady) return;
+  if (rafPending || !hasImage || !appReady) return;
   rafPending = true;
   requestAnimationFrame(() => {
     rafPending = false;
@@ -431,7 +477,7 @@ function queueUpdate() {
 
 // Actualización inmediata (presets, reset, cambio de vista).
 function refresh() {
-  if (!hasImage || !cvReady) return;
+  if (!hasImage || !appReady) return;
   renderSpectrum();
   inverseFFT();
 }
@@ -449,7 +495,7 @@ function canvasCoords(e) {
 }
 
 freq.addEventListener("pointerdown", (e) => {
-  if (!hasImage || !cvReady) return;
+  if (!hasImage || !appReady) return;
   e.preventDefault();
   painting = true;
   freq.setPointerCapture(e.pointerId);
@@ -510,6 +556,7 @@ function setCanvasSizes() {
 
 function loadFromImage(src) {
   N = parseInt(sizeSel.value, 10);
+  prepFFT();                               // twiddles + buffers para el nuevo N
   setCanvasSizes();
   lastSource = src;
   const gray = imageToLuminance(src);
@@ -593,49 +640,22 @@ sizeSel.addEventListener("change", () => {
   if (lastSource) whenReady(() => loadFromImage(lastSource));   // re-FI de la fuente actual
 });
 
-// ---------- Carga de OpenCV.js con CDNs de respaldo ----------
-// Se carga dinámicamente y, si un CDN falla, se prueba el siguiente.
-// Cuando el runtime está listo se ejecuta la cola de trabajo encolada.
-const CDNS = [
-  "https://docs.opencv.org/4.13.0/opencv.js",
-  "https://docs.opencv.org/4.12.0/opencv.js",
-  "https://docs.opencv.org/4.11.0/opencv.js"
-];
-
-function loadOpenCV(i, onReady, onFail) {
-  if (i >= CDNS.length) { onFail(); return; }
-  setStatus("Cargando OpenCV.js (" + (i + 1) + "/" + CDNS.length + ")…");
-  const s = document.createElement("script");
-  s.src = CDNS[i];
-  s.onload = () => {
-    // El build del CDN define cv.onRuntimeInitialized al terminar el WASM.
-    if (cvReady) onReady();
-    else cv["onRuntimeInitialized"] = () => { onReady(); };
-  };
-  s.onerror = () => { s.remove(); loadOpenCV(i + 1, onReady, onFail); };
-  document.head.appendChild(s);
-}
-
-function onCvReady() {
-  cvReady = true;
-  setStatus("Listo ✓ — pinta sobre el espectro", "ok");
-  readyQueue.splice(0).forEach((fn) => { try { fn(); } catch (e) { setStatus("Error: " + e.message, "err"); } });
-  if (lastSource) return;   // el usuario ya ha cargado su propia imagen
+// ---------- Arranque ----------
+// No hay nada que descargar (el motor FFT es parte del propio script):
+// la app está lista al instante. La imagen por defecto se fetchea como
+// blob para evitar un canvas "tainted" al abrir el HTML vía file://;
+// si el fetch no es posible (p. ej. file:// sin servidor) se usa una
+// imagen procedural.
+setStatus("Listo ✓ — pinta sobre el espectro", "ok");
+if (!lastSource) {
   const img = new Image();
   img.onload = () => { try { loadFromImage(img); } catch (e) { setStatus("Error: " + e.message, "err"); } };
   img.onerror = () => loadFromImage(proceduralImage());
-  img.src = "icon.png";   // imagen por defecto (icono del proyecto)
+  fetch("icon.png")
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status))))
+    .then((b) => (img.src = URL.createObjectURL(b)))
+    .catch(() => loadFromImage(proceduralImage()));
 }
-
-function onCvFail() {
-  setStatus("No se pudo cargar OpenCV.js ✗ — comprueba tu conexión y recarga", "err");
-}
-
-loadOpenCV(0, onCvReady, onCvFail);
-// Avisín por si el runtime tarda (el build es grande).
-setTimeout(() => { if (!cvReady) setStatus("Cargando OpenCV.js (~11 MB)…"); }, 2500);
-// Si nada responde a tiempo, el error ya se mostrará vía onerror.
-setTimeout(() => { if (!cvReady && statusEl.className !== "err") setStatus("OpenCV.js aún cargando… (recarga si llevas >30 s)"); }, 30000);
 
 </script>
 </body>
