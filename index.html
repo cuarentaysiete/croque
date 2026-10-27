@@ -770,6 +770,12 @@ for (const [file, label] of SAMPLES) {
   o.textContent = label;
   sampleSel.appendChild(o);
 }
+// The sample gallery is the one feature that cannot work from file://: the
+// browser blocks fetch() there and taints canvases drawn with file: images,
+// so their pixels can neither be read nor exported. Say so up front.
+if (location.protocol === "file:") {
+  sampleSel.title = "The sample gallery needs a local server when the app is opened from file://. Use Load image or drag & drop for your own files.";
+}
 sampleSel.addEventListener("change", () => {
   const f = sampleSel.value;
   sampleSel.value = "";   // can be re-selected

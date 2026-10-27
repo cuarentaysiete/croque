@@ -1,4 +1,4 @@
-# <img src="icon.png" height="64px" >Croque _[kʁɔk]_
+# <img src="icon.png" height="64px"> Croque
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](index.html)
@@ -22,7 +22,15 @@ sample gallery):
 npx serve .
 # or
 python3 -m http.server 8000
+# or, on Chrome/Chromium only: launch with file access allowed, then open index.html
+google-chrome --allow-file-access-from-files
 ```
+
+Only the **sample gallery** needs this: from a `file://` page the browser blocks
+`fetch()` and *taints* canvases drawn with `file:` images, so their pixels can
+neither be read (FFT input) nor exported (downloads). The **Load image** button
+and **drag & drop** use `blob:` object URLs, which inherit the page origin, so
+they work fine offline with no server at all.
 
 1. **Get an image in** any of three ways: the **Load image** button,
    **drag & drop** it anywhere on the page, or pick one from the **Sample**
