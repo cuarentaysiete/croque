@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Croque — Editor de imágenes en el dominio de frecuencia</title>
+<title>Croque — frequency-domain image editor</title>
 <link rel="icon" type="image/png" href="icon.png">
 <style>
   :root {
@@ -139,17 +139,17 @@
 
 <header>
   <div>
-    <h1><img src="icon.png" alt="" width="24" height="24" style="border-radius:5px;vertical-align:-4px;margin-right:.35rem"><span class="logo">Croque</span> — editor en el dominio de frecuencia</h1>
-    <div class="sub">Pinta sobre el espectro (notch filters) y observa la imagen en tiempo real. Hermitian symmetry included.</div>
+    <h1><img src="icon.png" alt="" width="24" height="24" style="border-radius:5px;vertical-align:-4px;margin-right:.35rem"><span class="logo">Croque</span> — frequency-domain image editor</h1>
+    <div class="sub">Paint on the spectrum (notch filters) and watch the image update in real time. Hermitian symmetry included.</div>
   </div>
-  <div id="status">Preparando…</div>
+  <div id="status">Preparing…</div>
 </header>
 
 <div class="controls">
-  <label class="file-btn">Cargar imagen <input type="file" id="file" accept="image/*"></label>
+  <label class="file-btn">Load image <input type="file" id="file" accept="image/*"></label>
 
   <div class="ctrl">
-    <label for="size">Resolución FFT</label>
+    <label for="size">FFT size</label>
     <select id="size">
       <option value="128">128 × 128</option>
       <option value="256">256 × 256</option>
@@ -158,76 +158,76 @@
   </div>
 
   <div class="ctrl">
-    <label for="brush">Pincel</label>
+    <label for="brush">Brush</label>
     <input type="range" id="brush" min="2" max="80" value="14">
     <span class="val" id="brushVal">14</span>
   </div>
 
   <div class="ctrl">
-    <label for="action">Acción</label>
+    <label for="action">Action</label>
     <select id="action">
-      <option value="atten" selected>Atenuar ×10 %</option>
-      <option value="zero">Anular (muesca)</option>
-      <option value="restore">Restaurar</option>
+      <option value="atten" selected>Attenuate ×10 %</option>
+      <option value="zero">Null out (notch)</option>
+      <option value="restore">Restore</option>
     </select>
   </div>
 
   <div class="seg" id="viewSeg">
-    <button data-view="mag" class="on">Magnitud (log)</button>
-    <button data-view="phase">Fase</button>
+    <button data-view="mag" class="on">Magnitude (log)</button>
+    <button data-view="phase">Phase</button>
   </div>
 
-  <button id="lp" title="Mantener solo el círculo central">Paso-Bajo</button>
-  <button id="hp" title="Mantener solo el anillo exterior">Paso-Alto</button>
-  <button id="reset">Restaurar todo</button>
-  <button id="download" class="primary">Descargar PNG</button>
+  <button id="lp" title="Keep only the central disc">Low-Pass</button>
+  <button id="hp" title="Keep only the outer ring">High-Pass</button>
+  <button id="reset">Reset All</button>
+  <button id="download" class="primary">Download PNG</button>
 </div>
 
 <main class="panels">
   <section class="panel">
-    <h2>Dominio espacial <span class="tag" id="spTag">—</span></h2>
+    <h2>Spatial domain <span class="tag" id="spTag">—</span></h2>
     <div class="canvas-wrap"><canvas id="spatial"></canvas></div>
   </section>
   <section class="panel">
-    <h2>Dominio de frecuencia <span class="tag">pinta aquí</span></h2>
-    <div class="canvas-wrap" id="freq.canvas-host"><canvas id="freq"></canvas></div>
+    <h2>Frequency domain <span class="tag">paint here</span></h2>
+    <div class="canvas-wrap"><canvas id="freq"></canvas></div>
   </section>
 </main>
 
 <footer>
-  Todo el procesado ocurre en el navegador: motor FFT 2D propio en JavaScript puro,
-  sin librerías externas (funciona offline y desde <code>file://</code>).
-  Cada trazo se replica en (−x, −y) respecto al centro para conservar la simetría hermitiana
-  y que la IFFT produzca una imagen real.
+  Everything runs in your browser: a custom 2D FFT engine in pure JavaScript,
+  no external libraries (works offline, even from <code>file://</code>).
+  Every stroke is mirrored at (−x, −y) about the center to preserve Hermitian
+  symmetry, so the IFFT always yields a real image.
 </footer>
 
 <script>
 "use strict";
 /* ================================================================
- * CROQUE — Editor de imágenes en el dominio de frecuencia
+ * CROQUE — frequency-domain image editor
  * ------------------------------------------------------------
  * Pipeline:
- *   imagen → luminancia gris N×N (potencia de 2)
- *        → FFT 2D directa  (motor propio Cooley–Tukey)
- *        → fftshift (DC al centro)
- *        → edición interactiva del espectro complejo (pincel + presets)
- *        → ifftshift + IFFT 2D
- *        → normalización 0..255 → canvas espacial
- * Cada operación sobre el espectro se replica en el punto espejo
- * (−x, −y) respecto al centro (simetría hermitiana) para que la
- * IFFT produzca siempre una imagen estrictamente real.
+ *   image → N×N grayscale luminance (power of two)
+ *        → 2D forward FFT (own Cooley–Tukey engine)
+ *        → fftshift (DC to center)
+ *        → interactive editing of the complex spectrum (brush + presets)
+ *        → ifftshift + 2D IFFT
+ *        → 0..255 normalization → spatial canvas
+ * Every spectral edit is mirrored at the opposite point (−x, −y)
+ * about the center (Hermitian symmetry) so the IFFT always yields a
+ * strictly real image.
  * ================================================================ */
 
-// ---------- Estado global ----------
-let N = 512;                 // lado de la FFT (potencia de 2)
-let appReady = true;   // todo el procesado es local: sin dependencias externas
+// ---------- Global state ----------
+let N = 512;                 // FFT side length (power of two)
+let appReady = true;   // everything is local: no external dependencies
 let hasImage = false;
 let view = "mag";            // "mag" (log) | "phase"
-let re, im;                  // espectro complejo CENTRADO (post-fftshift)
-let re0, im0;                // copia original (para "restaurar")
-let logMagMax = 1;           // escala log fija, calculada con la imagen original
-let lastSource = null;       // imagen/canvas cargada más reciente
-let workRe, workIm;          // buffers reutilizables de la IFFT
+let re, im;                  // CENTERED complex spectrum (post-fftshift)
+let re0, im0;                // original copy (for "restore")
+let logMagMax = 1;           // fixed log scale, computed from the original image
+let lastSource = null;       // most recently loaded image/canvas
+let workRe, workIm;          // reusable IFFT buffers
 
 // ---------- DOM ----------
 const statusEl = document.getElementById("status");
@@ -247,14 +247,14 @@ function setStatus(msg, cls) {
   statusEl.className = cls || "";
 }
 
-// ---------- Cola de trabajo ----------
-// Queda como gancho por si en el futuro añadimos algo asíncrono; hoy
-// todo se resuelve en el spot.
+// ---------- Work queue ----------
+// Kept as a hook in case we add async work later; for now
+// everything resolves in place.
 function whenReady(fn) { fn(); }
 
-// ---------- Carga de imagen → luminancia ----------
-// Redimensiona la fuente a N×N y extrae la luminancia BT.601
-// (0.299·R + 0.587·G + 0.114·B) en un Float32Array.
+// ---------- Image → luminance ----------
+// Resizes the source to N×N and extracts BT.601 luminance
+// (0.299·R + 0.587·G + 0.114·B) into a Float32Array.
 function imageToLuminance(src) {
   const c = document.createElement("canvas");
   c.width = c.height = N;
@@ -263,7 +263,7 @@ function imageToLuminance(src) {
   cx.drawImage(src, 0, 0, N, N);
   let data;
   try { data = cx.getImageData(0, 0, N, N).data; }
-  catch { throw new Error("canvas contaminado por datos cross-origin; usa una imagen local o servida con CORS"); }
+  catch { throw new Error("canvas tainted by cross-origin data; use a local image or one served with CORS"); }
   const gray = new Float32Array(N * N);
   for (let i = 0, p = 0; i < gray.length; i++, p += 4)
     gray[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
@@ -271,10 +271,10 @@ function imageToLuminance(src) {
 }
 
 // ---------- fftshift / ifftshift ----------
-// Desplaza la matriz 2D N/2 filas y N/2 columnas. Como el desplazamiento
-// es exactamente la mitad, la operación es su propia inversa: la misma
-// función sirve para centrar (fftshift) y recentrar (ifftshift).
-// (y + N/2) % N se calcula con máscara porque N es potencia de 2.
+// Shifts the 2D matrix by N/2 rows and N/2 columns. Since the shift
+// is exactly half, the operation is its own inverse: the same function
+// both centers (fftshift) and re-centers (ifftshift).
+// (y + N/2) % N is computed with a mask because N is a power of two.
 function halfShift(srcRe, srcIm, dstRe, dstIm) {
   const H = N >> 1, mask = N - 1;
   for (let y = 0; y < N; y++) {
@@ -289,12 +289,11 @@ function halfShift(srcRe, srcIm, dstRe, dstIm) {
   }
 }
 
-// ---------- Motor FFT 2D (Cooley–Tukey radix-2, sin dependencias) ----------
-// Los builds públicos de OpenCV.js no incluyen el módulo dft, así que la
-// transformada vive aquí: FFT 1D in-place (permutación bit-reverse +
-// mariposas con twiddles precomputados por tamaño) aplicada a filas y a
-// columnas. 512×512 corre en una decena de ms, suficiente para "tiempo
-// real" vía requestAnimationFrame.
+// ---------- 2D FFT engine (Cooley–Tukey radix-2, dependency-free) ----------
+// The public OpenCV.js builds don't include the dft module, so the
+// transform lives here: in-place 1D FFT (bit-reversal permutation +
+// butterflies with precomputed twiddles) applied to rows then columns.
+// 512×512 runs in a few dozen ms — real-time via requestAnimationFrame.
 function prepFFT() {
   const half = N >> 1;
   twRe = new Float32Array(half);
@@ -313,10 +312,10 @@ function prepFFT() {
   workRe = new Float32Array(N * N);
   workIm = new Float32Array(N * N);
 }
-let twRe, twIm, rev;   // twiddles + permutación (se (re)crean en prepFFT)
+let twRe, twIm, rev;   // twiddles + permutation (recreated in prepFFT)
 
-// FFT 1D in-place sobre [re, im] empezando en `off` y con `stride`
-// entre elementos (stride=1 → filas, stride=N → columnas).
+// In-place 1D FFT over [re, im] starting at `off` with `stride`
+// between elements (stride=1 → rows, stride=N → columns).
 function fft1D(re, im, off, stride, invert) {
   for (let i = 0; i < N; i++) {
     const r = rev[i];
@@ -342,8 +341,8 @@ function fft1D(re, im, off, stride, invert) {
   }
 }
 
-// FFT 2D = FFT de filas + FFT de columnas. La inversa escala por 1/N²
-// para que IFFT(FFT(x)) = x.
+// 2D FFT = row FFTs + column FFTs. The inverse scales by 1/N²
+// so that IFFT(FFT(x)) = x.
 function fft2D(re, im, invert) {
   for (let y = 0; y < N; y++) fft1D(re, im, y * N, 1, invert);
   for (let x = 0; x < N; x++) fft1D(re, im, x, N, invert);
@@ -353,35 +352,35 @@ function fft2D(re, im, invert) {
   }
 }
 
-// ---------- FFT directa (carga / cambio de imagen) ----------
-// Entrada: Float32Array de luminancia N×N.
-// Salida: re/im CENTRADOS (fftshift) + copia de respaldo + escala log.
+// ---------- Forward FFT (load / image change) ----------
+// Input: N×N luminance Float32Array.
+// Output: CENTERED re/im (fftshift) + backup copy + log scale.
 function forwardFFT(gray) {
-  // Complejo de entrada: real = luminancia, imaginaria = 0.
+  // Input complex array: real = luminance, imaginary = 0.
   re = new Float32Array(gray);
   im = new Float32Array(N * N);
-  fft2D(re, im, false);                        // FFT 2D directa
+  fft2D(re, im, false);                        // forward 2D FFT
 
   const rc = new Float32Array(N * N), ic = new Float32Array(N * N);
-  halfShift(re, im, rc, ic);                  // fftshift → DC al centro
+  halfShift(re, im, rc, ic);                  // fftshift → DC to center
   re = rc; im = ic;
   re0 = new Float32Array(re); im0 = new Float32Array(im);
 
-  // Escala log fixa (maximo de la magnitud original): evita que el
-  // espectro se "auto-clarifique" mientras atenuamos zonas.
+  // Fixed log scale (max of the original magnitude): stops the
+  // spectrum from "auto-brightening" as we attenuate regions.
   logMagMax = 1e-6;
   for (let i = 0; i < re.length; i++)
     logMagMax = Math.max(logMagMax, Math.log1p(Math.hypot(re[i], im[i])));
 }
 
-// ---------- IFFT (cada ciclo de pintura) ----------
-// Descentra (ifftshift) en buffers reutilizables, aplica la IFFT 2D,
-// normaliza la parte real a 0..255 y dibuja en el canvas espacial.
+// ---------- IFFT (every paint cycle) ----------
+// Re-centers (ifftshift) into reusable buffers, applies the 2D IFFT,
+// normalizes the real part to 0..255 and draws the spatial canvas.
 function inverseFFT() {
-  halfShift(re, im, workRe, workIm);        // ifftshift (misma op. que fftshift)
-  fft2D(workRe, workIm, true);              // IFFT 2D (ya escala por 1/N²)
+  halfShift(re, im, workRe, workIm);        // ifftshift (same op as fftshift)
+  fft2D(workRe, workIm, true);              // 2D IFFT (already scales by 1/N²)
 
-  // Normaliza al rango 0..255 (min-max) y pinta.
+  // Min-max normalize to 0..255 and paint.
   let mn = Infinity, mx = -Infinity;
   for (let i = 0; i < workRe.length; i++) {
     const v = workRe[i];
@@ -398,9 +397,9 @@ function inverseFFT() {
   sctx.putImageData(img, 0, 0);
 }
 
-// ---------- Render del espectro (derecha) ----------
-// Magnitud: log(1+|F|) normalizado por la escala original.
-// Fase: atan2(Im, Re) en (−π, π] mapeada a gris.
+// ---------- Spectrum render (right canvas) ----------
+// Magnitude: log(1+|F|) normalized by the original scale.
+// Phase: atan2(Im, Re) in (−π, π] mapped to grayscale.
 function renderSpectrum() {
   const img = fctx.createImageData(N, N);
   const d = img.data;
@@ -420,26 +419,26 @@ function renderSpectrum() {
   fctx.putImageData(img, 0, 0);
 }
 
-// ---------- Pincel (notch filter) con simetría hermitiana ----------
-// REGLA CRÍTICA (simetría hermitiana): el píxel (x, y) representa la
-// frecuencia (x − N/2, y − N/2) respecto al centro; su conjugado
-// hermitiano −(u, v) vive en (N − x, N − y) mod N. Cada píxel afectado
-// se aplica también a esa pareja, de modo que F(−u,−v) = F*(u,v) se
-// conserva y la IFFT produce una imagen estrictamente real.
+// ---------- Brush (notch filter) with Hermitian symmetry ----------
+// KEY RULE (Hermitian symmetry): pixel (x, y) represents the frequency
+// (x − N/2, y − N/2) relative to the center; its conjugate at
+// −(u, v) lives at (N − x, N − y) mod N. Every affected pixel is applied
+// to that partner too, so F(−u,−v) = F*(u,v) is preserved and the IFFT
+// produces a strictly real image.
 function setPixel(i, action) {
   if (action === "restore") { re[i] = re0[i]; im[i] = im0[i]; }
   else if (action === "zero") { re[i] = 0; im[i] = 0; }
-  else { re[i] *= 0.1; im[i] *= 0.1; }   // atenuación fuerte acumulable
+  else { re[i] *= 0.1; im[i] *= 0.1; }   // strong, accumulative attenuation
 }
 
 function applyAt(x, y, action) {
   const i = y * N + x;
   setPixel(i, action);
-  const mx = (N - x) % N, my = (N - y) % N;   // pareja conjugada (−x, −y)
+  const mx = (N - x) % N, my = (N - y) % N;   // conjugate partner (−x, −y)
   if (mx !== x || my !== y) setPixel(my * N + mx, action);
 }
 
-// Disco de pincel de radio R centrado en (cx, cy).
+// Brush disc of radius R centered at (cx, cy).
 function paint(cx, cy, R) {
   const action = actionSel.value;
   const R2 = R * R, c = Math.round(N / 2);
@@ -455,9 +454,9 @@ function paint(cx, cy, R) {
   }
 }
 
-// ---------- Cola de pintura + requestAnimationFrame ----------
-// Los movimientos del ratón se acumulan; por frame se pintan todos
-// los puntos pendientes y se recalcula IFFT + espectro UNA sola vez.
+// ---------- Paint queue + requestAnimationFrame ----------
+// Pointer movements accumulate; each frame paints all pending points
+// and recomputes IFFT + spectrum exactly once.
 let rafPending = false;
 const pending = [];
 
@@ -475,14 +474,14 @@ function queueUpdate() {
   });
 }
 
-// Actualización inmediata (presets, reset, cambio de vista).
+// Immediate refresh (presets, reset, view change).
 function refresh() {
   if (!hasImage || !appReady) return;
   renderSpectrum();
   inverseFFT();
 }
 
-// Eventos de puntero sobre el canvas de frecuencia.
+// Pointer events on the frequency canvas.
 let painting = false;
 let lastPt = null;
 
@@ -507,7 +506,7 @@ freq.addEventListener("pointerdown", (e) => {
 freq.addEventListener("pointermove", (e) => {
   if (!painting) return;
   const pt = canvasCoords(e);
-  // Interpola el trazo para que no queden huecos con ratones rápidos.
+  // Interpolate the stroke so fast mouse movements leave no gaps.
   const dx = pt.x - lastPt.x, dy = pt.y - lastPt.y;
   const dist = Math.hypot(dx, dy);
   const steps = Math.max(1, Math.ceil(dist / 2));
@@ -522,14 +521,14 @@ freq.addEventListener("pointerup", stopPaint);
 freq.addEventListener("pointercancel", stopPaint);
 
 // ---------- Presets ----------
-// Paso-bajo: conserva el disco central con borde coseno suave
-// (evita el ringing de Gibbs del corte abrupto). Paso-alto: lo opuesto.
+// Low-pass: keeps the central disc with a smooth cosine edge
+// (avoids the Gibbs ringing of an abrupt cut). High-pass: the opposite.
 function applyRadial(lowPass) {
   const c = (N - 1) / 2, R = N * 0.15, band = N * 0.04;
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
       const r = Math.hypot(x - c, y - c);
-      let t;                                    // factor de atenuación 0..1
+      let t;                                    // attenuation factor 0..1
       if (lowPass) {
         t = r < R ? 0
           : r < R + band ? 1 - (1 - Math.cos(Math.PI * (r - R) / band)) / 2
@@ -548,7 +547,7 @@ function applyRadial(lowPass) {
   refresh();
 }
 
-// ---------- Carga y preparación ----------
+// ---------- Loading & setup ----------
 function setCanvasSizes() {
   spatial.width = spatial.height = N;
   freq.width = freq.height = N;
@@ -556,19 +555,19 @@ function setCanvasSizes() {
 
 function loadFromImage(src) {
   N = parseInt(sizeSel.value, 10);
-  prepFFT();                               // twiddles + buffers para el nuevo N
+  prepFFT();                               // twiddles + buffers for the new N
   setCanvasSizes();
   lastSource = src;
   const gray = imageToLuminance(src);
   forwardFFT(gray);
   hasImage = true;
   spTag.textContent = N + " × " + N;
-  setStatus("Listo ✓", "ok");
+  setStatus("Ready ✓", "ok");
   refresh();
 }
 
-// Imagen procedural de respaldo si no hay icon.png (anillos + rejilla
-// + texto: frecuencias muy "fotogénicas" para jugar con el pincel).
+// Fallback procedural image if icon.png is unavailable (rings + grid
+// + text: very "photogenic" frequencies to play with the brush).
 function proceduralImage() {
   const c = document.createElement("canvas");
   c.width = c.height = 512;
@@ -592,7 +591,7 @@ function proceduralImage() {
   return c;
 }
 
-// ---------- Cableado de la UI ----------
+// ---------- UI wiring ----------
 brushSel.addEventListener("input", () => { brushVal.textContent = brushSel.value; });
 
 viewSeg.addEventListener("click", (e) => {
@@ -618,7 +617,7 @@ document.getElementById("download").addEventListener("click", () => {
   spatial.toBlob((b) => {
     const a = document.createElement("a");
     a.href = URL.createObjectURL(b);
-    a.download = "croque-resultado.png";
+    a.download = "croque-result.png";
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   });
@@ -627,26 +626,26 @@ document.getElementById("download").addEventListener("click", () => {
 document.getElementById("file").addEventListener("change", (e) => {
   const f = e.target.files[0];
   if (!f) return;
-  setStatus("Cargando imagen…");
+  const name = file.name;
+  setStatus("Loading image…");
   const img = new Image();
   img.onload = () => whenReady(() => {
-    try { loadFromImage(img); } catch (err) { setStatus("Error al procesar: " + err.message, "err"); }
+    try { if (file.name !== name) return; loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
   });
-  img.onerror = () => setStatus("No se pudo cargar la imagen ✗", "err");
+  img.onerror = () => { if (file.name !== name) return; setStatus("Could not load image ✗", "err"); };
   img.src = URL.createObjectURL(f);
 });
 
 sizeSel.addEventListener("change", () => {
-  if (lastSource) whenReady(() => loadFromImage(lastSource));   // re-FI de la fuente actual
+  if (lastSource) whenReady(() => loadFromImage(lastSource));   // re-FFT the current source
 });
 
-// ---------- Arranque ----------
-// No hay nada que descargar (el motor FFT es parte del propio script):
-// la app está lista al instante. La imagen por defecto se fetchea como
-// blob para evitar un canvas "tainted" al abrir el HTML vía file://;
-// si el fetch no es posible (p. ej. file:// sin servidor) se usa una
-// imagen procedural.
-setStatus("Listo ✓ — pinta sobre el espectro", "ok");
+// ---------- Startup ----------
+// Nothing to download (the FFT engine is part of this script): the app
+// is ready instantly. The default image is fetched as a blob to avoid a
+// tainted canvas when the HTML is opened via file://; if the fetch is
+// not possible (e.g. file:// without a server) a procedural image is used.
+setStatus("Ready ✓ — paint on the spectrum", "ok");
 if (!lastSource) {
   const img = new Image();
   img.onload = () => { try { loadFromImage(img); } catch (e) { setStatus("Error: " + e.message, "err"); } };
