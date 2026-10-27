@@ -36,6 +36,21 @@ python3 -m http.server 8000
 Controls are grouped by what they affect: the left cluster works on the source
 /spatial image, the right cluster on the spectrum.
 
+## Screenshots
+
+![The complete interface: procedural demo image on the left, its centered spectrum on the right](docs/gui.png)
+*The full interface with the built-in demo image: spatial domain (left) and centered log-magnitude spectrum (right).*
+
+| Low-Pass preset | High-Pass preset |
+|---|---|
+| ![Low-pass](docs/low-pass.png) | ![High-pass](docs/high-pass.png) |
+| Smooth cosine mask keeps the central disc: the image blurs down to its low-frequency content. | Nulls the central disc: DC and shading are removed, leaving edges and texture. |
+
+| Sample: Mandril | Notch painted next to the High-Pass hole |
+|---|---|
+| ![Mandril](docs/sample1.png) | ![Notch](docs/sample2.png) |
+| A classic test image from the Sample menu and its raw spectrum. | Brush work on the spectrum (note the circular brush cursor) after a High-Pass. |
+
 ## Pipeline
 
 ```
@@ -71,6 +86,7 @@ real-time.
 |---|---|
 | `index.html` | Complete application (HTML + CSS + JS, self-contained FFT, zero dependencies) |
 | `samples/` | Classic test images for the Sample menu (Cameraman, Lena, Mandril, Peppers, …) |
+| `docs/` | Screenshots used in the README (GUI, presets, sample sessions) |
 | `icon.png` | App icon and default image |
 | `icon.jpg` | Alternative example image (JPEG) |
 | `LICENSE` | MIT |
