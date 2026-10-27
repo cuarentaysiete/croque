@@ -626,7 +626,7 @@ function loadFromImage(src) {
   document.body.classList.add("has-image");
   clearCursor();
   spTag.textContent = N + " × " + N;
-  setStatus("Ready ✓", "ok");
+  setStatus("Ready", "ok");
   refresh();
 }
 
@@ -699,7 +699,7 @@ document.getElementById("download").addEventListener("click", () => {
   };
   dl(spatial.toDataURL("image/png"), "croque-spatial.png");
   dl(freq.toDataURL("image/png"), "croque-spectrum.png");
-  setStatus("Downloaded croque-spatial.png + croque-spectrum.png ✓", "ok");
+  setStatus("Downloaded croque-spatial.png + croque-spectrum.png", "ok");
 });
 
 // ---------- Image loading (file picker, drag & drop, samples) ----------
@@ -714,7 +714,7 @@ function loadFile(f) {
     if (seq !== loadSeq) return;   // a newer load superseded this one
     try { loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
   };
-  img.onerror = () => { if (seq === loadSeq) setStatus("Could not load image ✗", "err"); };
+  img.onerror = () => { if (seq === loadSeq) setStatus("Could not load image", "err"); };
   img.src = URL.createObjectURL(f);
 }
 
@@ -784,12 +784,12 @@ sampleSel.addEventListener("change", () => {
         if (seq !== loadSeq) return;
         try { loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
       };
-      img.onerror = () => { if (seq === loadSeq) setStatus("Could not load sample ✗", "err"); };
+      img.onerror = () => { if (seq === loadSeq) setStatus("Could not load sample", "err"); };
       img.src = URL.createObjectURL(b);
     })
     .catch(() => {
       if (seq !== loadSeq) return;
-      setStatus("Samples need a local server: python3 -m http.server 8000 ✗", "err");
+      setStatus("Samples need a local server: python3 -m http.server 8000", "err");
     });
 });
 
@@ -802,7 +802,7 @@ sizeSel.addEventListener("change", () => {
 // is ready instantly. The default image is fetched as a blob to avoid a
 // tainted canvas when the HTML is opened via file://; if the fetch is
 // not possible (e.g. file:// without a server) a procedural image is used.
-setStatus("Ready ✓ — paint on the spectrum", "ok");
+setStatus("Ready — paint on the spectrum", "ok");
 if (!lastSource) {
   const seq = ++loadSeq;
   const img = new Image();
