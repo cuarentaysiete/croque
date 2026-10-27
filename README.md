@@ -1,4 +1,4 @@
-# Croque
+# <img src="icon.png" height="64px"> Croque
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](index.html)
