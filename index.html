@@ -589,13 +589,15 @@ function applyRadial(lowPass) {
       const r = Math.hypot(x - c, y - c);
       let t;                                    // attenuation factor 0..1
       if (lowPass) {
+        // 0 inside R, smooth cosine ramp 0→1 across [R, R+band], 1 outside.
         t = r < R ? 0
-          : r < R + band ? 1 - (1 - Math.cos(Math.PI * (r - R) / band)) / 2
-          : 1;
+          : r > R + band ? 1
+          : (1 - Math.cos(Math.PI * (r - R) / band)) / 2;
       } else {
-        t = r > R ? 0
-          : r > R - band ? (1 - Math.cos(Math.PI * (R - r) / band)) / 2
-          : 1;
+        // 1 inside R, smooth cosine ramp 1→0 across [R, R+band], 0 outside.
+        t = r < R ? 1
+          : r > R + band ? 0
+          : (1 + Math.cos(Math.PI * (r - R) / band)) / 2;
       }
       if (t === 0) continue;
       const i = y * N + x;
