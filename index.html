@@ -7,22 +7,22 @@
 <link rel="icon" type="image/png" href="icon.png">
 <style>
   :root {
-    --bg: #0e1016;
-    --panel: #161a23;
-    --panel-2: #1d2230;
-    --border: #2a3145;
-    --text: #e8ecf4;
-    --muted: #8b93a7;
-    --accent: #7c5cff;
-    --accent-2: #22d3ee;
-    --danger: #f43f5e;
+    --bg: #101314;
+    --panel: #181d1f;
+    --panel-2: #20272a;
+    --border: #2e383c;
+    --text: #eef2f1;
+    --muted: #93a5a8;
+    --accent: #ffb454;
+    --accent-2: #2dd4bf;
+    --danger: #ff6b6b;
     --radius: 14px;
     font-size: 15px;
   }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; min-height: 100vh;
-    background: radial-gradient(1200px 700px at 70% -10%, #1a2033 0%, var(--bg) 55%);
+      background: radial-gradient(1200px 700px at 70% -10%, #16262a 0%, var(--bg) 55%);
     color: var(--text);
     font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   }
@@ -42,14 +42,20 @@
     border-radius: 999px; background: var(--panel);
     transition: color .2s;
   }
-  #status.ok { color: #34d399; }
+  #status.ok { color: #3ddc97; }
   #status.err { color: var(--danger); }
 
   /* ---------- Barra de controles ---------- */
   .controls {
-    display: flex; flex-wrap: wrap; gap: .7rem 1.1rem;
-    align-items: center;
+    display: flex; flex-wrap: wrap; gap: .7rem 1.5rem;
+    align-items: flex-start;
+    justify-content: space-between;
     padding: .4rem 1.4rem 1rem;
+  }
+  .group { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .group .glabel {
+    width: 100%; font-size: .68rem; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--muted); margin-bottom: .1rem;
   }
   .ctrl {
     display: flex; align-items: center; gap: .45rem;
@@ -75,8 +81,8 @@
   }
   button:hover, .file-btn:hover { border-color: var(--accent); }
   button:active { transform: translateY(1px); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button.primary:hover { background: #8d70ff; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #221302; }
+  button.primary:hover { background: #ffc477; }
   .file-btn input[type="file"] { display: none; }
 
   .seg {
@@ -87,7 +93,7 @@
     border: 0; border-radius: 0; background: var(--panel);
     padding: .45rem .8rem; font-size: .85rem; color: var(--muted);
   }
-  .seg button.on { background: var(--accent); color: #fff; }
+  .seg button.on { background: var(--accent); color: #221302; }
 
   /* ---------- Paneles ---------- */
   main.panels {
@@ -118,6 +124,19 @@
     color: var(--accent-2); border: 1px solid var(--border);
     padding: .15rem .5rem; border-radius: 999px;
   }
+  .canvas-wrap canvas#freq { cursor: crosshair; }
+  body.has-image .canvas-wrap canvas#freq { cursor: none; }
+  #brushCur { position: absolute; inset: 0; pointer-events: none; }
+  .samples-row { margin-top: auto; }
+  .samples-row select { flex: 1; min-width: 0; }
+  .dropzone {
+    position: fixed; inset: 0; z-index: 50;
+    display: none; place-items: center;
+    background: rgba(8, 12, 13, .85);
+    border: 3px dashed var(--accent);
+    font-size: 1.15rem; color: var(--text);
+  }
+  body.dragging .dropzone { display: grid; }
   .canvas-wrap {
     position: relative;
     aspect-ratio: 1;
@@ -129,7 +148,6 @@
     width: 100%; height: 100%; display: block;
     image-rendering: auto;
   }
-  #freq.canvas-host { cursor: crosshair; }
   footer {
     padding: 0 1.4rem 1rem; color: var(--muted); font-size: .78rem;
   }
@@ -146,51 +164,60 @@
 </header>
 
 <div class="controls">
-  <label class="file-btn">Load image <input type="file" id="file" accept="image/*"></label>
+  <div class="group">
+    <span class="glabel">Spatial image (left)</span>
+    <label class="file-btn">Load image <input type="file" id="file" accept="image/*"></label>
 
-  <div class="ctrl">
-    <label for="size">FFT size</label>
-    <select id="size">
-      <option value="128">128 × 128</option>
-      <option value="256">256 × 256</option>
-      <option value="512" selected>512 × 512</option>
-    </select>
+    <div class="ctrl">
+      <label for="size">FFT size</label>
+      <select id="size">
+        <option value="128">128 × 128</option>
+        <option value="256">256 × 256</option>
+        <option value="512" selected>512 × 512</option>
+      </select>
+    </div>
+
+    <button id="download" class="primary" title="Saves both domains as PNG (spatial + spectrum)">Download PNGs</button>
   </div>
 
-  <div class="ctrl">
-    <label for="brush">Brush</label>
-    <input type="range" id="brush" min="2" max="80" value="14">
-    <span class="val" id="brushVal">14</span>
-  </div>
+  <div class="group">
+    <span class="glabel">Spectrum (right)</span>
 
-  <div class="ctrl">
-    <label for="action">Action</label>
-    <select id="action">
-      <option value="atten" selected>Attenuate ×10 %</option>
-      <option value="zero">Null out (notch)</option>
-      <option value="restore">Restore</option>
-    </select>
-  </div>
+    <div class="ctrl">
+      <label for="brush">Brush</label>
+      <input type="range" id="brush" min="2" max="80" value="14">
+      <span class="val" id="brushVal">14</span>
+    </div>
 
-  <div class="seg" id="viewSeg">
-    <button data-view="mag" class="on">Magnitude (log)</button>
-    <button data-view="phase">Phase</button>
-  </div>
+    <div class="seg" id="actionSeg" title="What each brush stroke does">
+      <button data-act="atten" class="on">Attenuate ×10 %</button>
+      <button data-act="zero">Null out</button>
+      <button data-act="restore">Restore</button>
+    </div>
 
-  <button id="lp" title="Keep only the central disc">Low-Pass</button>
-  <button id="hp" title="Keep only the outer ring">High-Pass</button>
-  <button id="reset">Reset All</button>
-  <button id="download" class="primary">Download PNG</button>
+    <div class="seg" id="viewSeg">
+      <button data-view="mag" class="on">Magnitude (log)</button>
+      <button data-view="phase">Phase</button>
+    </div>
+
+    <button id="lp" title="Keep only the central disc">Low-Pass</button>
+    <button id="hp" title="Keep only the outer ring">High-Pass</button>
+    <button id="reset">Reset All</button>
+  </div>
 </div>
 
 <main class="panels">
   <section class="panel">
     <h2>Spatial domain <span class="tag" id="spTag">—</span></h2>
     <div class="canvas-wrap"><canvas id="spatial"></canvas></div>
+    <div class="ctrl samples-row">
+      <label for="sample">Sample</label>
+      <select id="sample"><option value="">— choose —</option></select>
+    </div>
   </section>
   <section class="panel">
     <h2>Frequency domain <span class="tag">paint here</span></h2>
-    <div class="canvas-wrap"><canvas id="freq"></canvas></div>
+    <div class="canvas-wrap"><canvas id="freq"></canvas><canvas id="brushCur"></canvas></div>
   </section>
 </main>
 
@@ -200,6 +227,8 @@
   Every stroke is mirrored at (−x, −y) about the center to preserve Hermitian
   symmetry, so the IFFT always yields a real image.
 </footer>
+
+<div class="dropzone">Drop image to load</div>
 
 <script>
 "use strict";
@@ -223,6 +252,7 @@ let N = 512;                 // FFT side length (power of two)
 let appReady = true;   // everything is local: no external dependencies
 let hasImage = false;
 let view = "mag";            // "mag" (log) | "phase"
+let action = "atten";        // brush action: atten | zero | restore
 let re, im;                  // CENTERED complex spectrum (post-fftshift)
 let re0, im0;                // original copy (for "restore")
 let logMagMax = 1;           // fixed log scale, computed from the original image
@@ -233,14 +263,17 @@ let workRe, workIm;          // reusable IFFT buffers
 const statusEl = document.getElementById("status");
 const spatial  = document.getElementById("spatial");
 const freq     = document.getElementById("freq");
+const brushCur = document.getElementById("brushCur");
 const sctx = spatial.getContext("2d");
 const fctx = freq.getContext("2d");
+const cctx = brushCur.getContext("2d");
 const spTag  = document.getElementById("spTag");
 const sizeSel    = document.getElementById("size");
 const brushSel   = document.getElementById("brush");
 const brushVal   = document.getElementById("brushVal");
-const actionSel  = document.getElementById("action");
+const actionSeg  = document.getElementById("actionSeg");
 const viewSeg    = document.getElementById("viewSeg");
+const sampleSel  = document.getElementById("sample");
 
 function setStatus(msg, cls) {
   statusEl.textContent = msg;
@@ -431,16 +464,16 @@ function setPixel(i, action) {
   else { re[i] *= 0.1; im[i] *= 0.1; }   // strong, accumulative attenuation
 }
 
-function applyAt(x, y, action) {
+function applyAt(x, y, a) {
   const i = y * N + x;
-  setPixel(i, action);
+  setPixel(i, a);
   const mx = (N - x) % N, my = (N - y) % N;   // conjugate partner (−x, −y)
-  if (mx !== x || my !== y) setPixel(my * N + mx, action);
+  if (mx !== x || my !== y) setPixel(my * N + mx, a);
 }
 
 // Brush disc of radius R centered at (cx, cy).
 function paint(cx, cy, R) {
-  const action = actionSel.value;
+  const a = action;
   const R2 = R * R, c = Math.round(N / 2);
   for (let dy = -R; dy <= R; dy++) {
     const y = Math.round(cy) + dy;
@@ -484,6 +517,7 @@ function refresh() {
 // Pointer events on the frequency canvas.
 let painting = false;
 let lastPt = null;
+let lastHover = null;
 
 function canvasCoords(e) {
   const r = freq.getBoundingClientRect();
@@ -493,19 +527,43 @@ function canvasCoords(e) {
   };
 }
 
+// Brush cursor: a circle whose on-screen size matches the brush radius
+// (drawn in N×N canvas space, so CSS scaling keeps it proportional).
+function drawCursor(pt) {
+  cctx.clearRect(0, 0, N, N);
+  if (!pt || !hasImage) return;
+  const R = parseInt(brushSel.value, 10);
+  cctx.beginPath();
+  cctx.arc(pt.x, pt.y, R, 0, 2 * Math.PI);
+  cctx.strokeStyle = "rgba(255, 180, 84, .95)";
+  cctx.lineWidth = Math.max(1, N / 300);
+  cctx.stroke();
+  cctx.beginPath();
+  cctx.arc(pt.x, pt.y, Math.max(1, N / 512), 0, 2 * Math.PI);
+  cctx.fillStyle = "rgba(255, 180, 84, .95)";
+  cctx.fill();
+}
+function clearCursor() {
+  cctx.clearRect(0, 0, N, N);
+}
+
 freq.addEventListener("pointerdown", (e) => {
   if (!hasImage || !appReady) return;
   e.preventDefault();
   painting = true;
   freq.setPointerCapture(e.pointerId);
   lastPt = canvasCoords(e);
+  lastHover = lastPt;
+  drawCursor(lastHover);
   pending.push(lastPt);
   queueUpdate();
 });
 
 freq.addEventListener("pointermove", (e) => {
-  if (!painting) return;
   const pt = canvasCoords(e);
+  lastHover = pt;
+  drawCursor(pt);
+  if (!painting) return;
   // Interpolate the stroke so fast mouse movements leave no gaps.
   const dx = pt.x - lastPt.x, dy = pt.y - lastPt.y;
   const dist = Math.hypot(dx, dy);
@@ -519,6 +577,7 @@ freq.addEventListener("pointermove", (e) => {
 const stopPaint = () => { painting = false; };
 freq.addEventListener("pointerup", stopPaint);
 freq.addEventListener("pointercancel", stopPaint);
+freq.addEventListener("pointerleave", () => { lastHover = null; clearCursor(); });
 
 // ---------- Presets ----------
 // Low-pass: keeps the central disc with a smooth cosine edge
@@ -551,6 +610,7 @@ function applyRadial(lowPass) {
 function setCanvasSizes() {
   spatial.width = spatial.height = N;
   freq.width = freq.height = N;
+  brushCur.width = brushCur.height = N;
 }
 
 function loadFromImage(src) {
@@ -561,6 +621,8 @@ function loadFromImage(src) {
   const gray = imageToLuminance(src);
   forwardFFT(gray);
   hasImage = true;
+  document.body.classList.add("has-image");
+  clearCursor();
   spTag.textContent = N + " × " + N;
   setStatus("Ready ✓", "ok");
   refresh();
@@ -592,7 +654,18 @@ function proceduralImage() {
 }
 
 // ---------- UI wiring ----------
-brushSel.addEventListener("input", () => { brushVal.textContent = brushSel.value; });
+brushSel.addEventListener("input", () => {
+  brushVal.textContent = brushSel.value;
+  drawCursor(lastHover);
+});
+
+actionSeg.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  action = btn.dataset.act;
+  for (const b of actionSeg.querySelectorAll("button"))
+    b.classList.toggle("on", b === btn);
+});
 
 viewSeg.addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-view]");
@@ -614,26 +687,108 @@ document.getElementById("reset").addEventListener("click", () => {
 
 document.getElementById("download").addEventListener("click", () => {
   if (!hasImage) return;
-  spatial.toBlob((b) => {
+  // Two files, both domains. toDataURL is synchronous, so both clicks
+  // happen inside the same user gesture.
+  const dl = (url, name) => {
     const a = document.createElement("a");
-    a.href = URL.createObjectURL(b);
-    a.download = "croque-result.png";
+    a.href = url;
+    a.download = name;
     a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  });
+  };
+  dl(spatial.toDataURL("image/png"), "croque-spatial.png");
+  dl(freq.toDataURL("image/png"), "croque-spectrum.png");
+  setStatus("Downloaded croque-spatial.png + croque-spectrum.png ✓", "ok");
 });
 
-document.getElementById("file").addEventListener("change", (e) => {
-  const f = e.target.files[0];
-  if (!f) return;
-  const name = file.name;
-  setStatus("Loading image…");
+// ---------- Image loading (file picker, drag & drop, samples) ----------
+let loadSeq = 0;
+function loadFile(f) {
+  if (!f || !f.type.startsWith("image/")) return;
+  const name = f.name;
+  const seq = ++loadSeq;
+  setStatus("Loading " + name + "…");
   const img = new Image();
-  img.onload = () => whenReady(() => {
-    try { if (file.name !== name) return; loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
-  });
-  img.onerror = () => { if (file.name !== name) return; setStatus("Could not load image ✗", "err"); };
+  img.onload = () => {
+    if (seq !== loadSeq) return;   // a newer load superseded this one
+    try { loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
+  };
+  img.onerror = () => { if (seq === loadSeq) setStatus("Could not load image ✗", "err"); };
   img.src = URL.createObjectURL(f);
+}
+
+document.getElementById("file").addEventListener("change", (e) => {
+  loadFile(e.target.files[0]);
+  e.target.value = "";   // allow re-selecting the same file
+});
+
+// Drag & drop anywhere on the window.
+let dragDepth = 0;
+const dragHasFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+window.addEventListener("dragenter", (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+  dragDepth++;
+  document.body.classList.add("dragging");
+});
+window.addEventListener("dragover", (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+});
+window.addEventListener("dragleave", (e) => {
+  if (!dragHasFiles(e)) return;
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (!dragDepth) document.body.classList.remove("dragging");
+});
+window.addEventListener("drop", (e) => {
+  if (!dragHasFiles(e)) return;
+  e.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove("dragging");
+  loadFile(e.dataTransfer.files && e.dataTransfer.files[0]);
+});
+
+// Sample gallery (served from ./samples — needs a local server from file://).
+const SAMPLES = [
+  ["cameraman.jpg", "Cameraman"],
+  ["house.jpg", "House"],
+  ["jetplane.jpg", "Jet plane"],
+  ["lake.jpg", "Lake"],
+  ["lena_gray_256.jpg", "Lena (classic)"],
+  ["livingroom.jpg", "Living room"],
+  ["mandril_color.jpg", "Mandril (color)"],
+  ["peppers_color.jpg", "Peppers (color)"],
+  ["pirate.jpg", "Pirate"],
+  ["walkbridge.jpg", "Walk bridge"],
+  ["woman_blonde.jpg", "Blonde woman"],
+  ["woman_darkhair.jpg", "Dark-haired woman"]
+];
+for (const [file, label] of SAMPLES) {
+  const o = document.createElement("option");
+  o.value = file;
+  o.textContent = label;
+  sampleSel.appendChild(o);
+}
+sampleSel.addEventListener("change", () => {
+  const f = sampleSel.value;
+  sampleSel.value = "";   // can be re-selected
+  if (!f) return;
+  const seq = ++loadSeq;
+  setStatus("Loading sample: " + f + "…");
+  fetch("samples/" + f)
+    .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status))))
+    .then((b) => {
+      const img = new Image();
+      img.onload = () => {
+        if (seq !== loadSeq) return;
+        try { loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
+      };
+      img.onerror = () => { if (seq === loadSeq) setStatus("Could not load sample ✗", "err"); };
+      img.src = URL.createObjectURL(b);
+    })
+    .catch(() => {
+      if (seq !== loadSeq) return;
+      setStatus("Samples need a local server: python3 -m http.server 8000 ✗", "err");
+    });
 });
 
 sizeSel.addEventListener("change", () => {
@@ -647,13 +802,20 @@ sizeSel.addEventListener("change", () => {
 // not possible (e.g. file:// without a server) a procedural image is used.
 setStatus("Ready ✓ — paint on the spectrum", "ok");
 if (!lastSource) {
+  const seq = ++loadSeq;
   const img = new Image();
-  img.onload = () => { try { loadFromImage(img); } catch (e) { setStatus("Error: " + e.message, "err"); } };
-  img.onerror = () => loadFromImage(proceduralImage());
+  img.onload = () => {
+    if (seq !== loadSeq) return;
+    try { loadFromImage(img); } catch (e) { setStatus("Error: " + e.message, "err"); }
+  };
+  img.onerror = () => { if (seq === loadSeq) loadFromImage(proceduralImage()); };
   fetch("icon.png")
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status))))
-    .then((b) => (img.src = URL.createObjectURL(b)))
-    .catch(() => loadFromImage(proceduralImage()));
+    .then((b) => {
+      if (seq !== loadSeq) return;
+      img.src = URL.createObjectURL(b);
+    })
+    .catch(() => { if (seq === loadSeq) loadFromImage(proceduralImage()); });
 }
 
 </script>
