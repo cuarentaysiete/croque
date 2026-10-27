@@ -1,4 +1,4 @@
-# ◉ Croque
+# <img src="icon.png" height="64px"> Croque
 
 A **frequency-domain** image editor for the browser: paint on the spectrum
 (notch filters) and watch the image update in real time.
