@@ -2,235 +2,238 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Croque — frequency-domain image editor</title>
-<link rel="icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
 <style>
   :root {
-    --bg: #0a0c12;
-    --panel: #12151d;
-    --panel-2: #181c26;
-    --border: #262c3a;
-    --text: #e6e9f0;
-    --muted: #8a93a6;
-    --accent: #22d3ee;
-    --accent-2: #ffb454;
-    --ok: #4ade80;
-    --err: #f87171;
+    --bg: #101314;
+    --panel: #181d1f;
+    --panel-2: #20272a;
+    --border: #2e383c;
+    --text: #eef2f1;
+    --muted: #93a5a8;
+    --accent: #ffb454;
+    --accent-2: #2dd4bf;
+    --danger: #ff6b6b;
+    --radius: 14px;
+    font-size: 15px;
   }
   * { box-sizing: border-box; }
   html, body {
-    margin: 0; height: 100%;
-    background: var(--bg);
+    margin: 0; min-height: 100vh;
+      background: radial-gradient(1200px 700px at 70% -10%, #16262a 0%, var(--bg) 55%);
     color: var(--text);
-    font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
-    overflow: hidden;
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   }
-  body.dragging { outline: 3px dashed var(--accent); outline-offset: -6px; }
+  body { display: flex; flex-direction: column; }
 
-  .app {
-    display: flex; flex-direction: column;
-    height: 100%; padding: 14px; gap: 12px;
+  header {
+    display: flex; align-items: baseline; justify-content: space-between;
+    flex-wrap: wrap; gap: .5rem;
+    padding: 1rem 1.4rem .6rem;
   }
-  .topbar {
-    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  header h1 { font-size: 1.25rem; margin: 0; letter-spacing: .02em; }
+  header h1 .logo { color: var(--accent); }
+  header .sub { color: var(--muted); font-size: .85rem; }
+  #status {
+    font-size: .8rem; color: var(--accent-2);
+    padding: .3rem .7rem; border: 1px solid var(--border);
+    border-radius: 999px; background: var(--panel);
+    transition: color .2s;
   }
-  .brand { display: flex; align-items: center; gap: 10px; }
-  .brand img { width: 34px; height: 34px; border-radius: 8px; }
-  .brand h1 { font-size: 19px; margin: 0; letter-spacing: .3px; }
-  .brand .phon { color: var(--muted); font-weight: 400; font-size: 13px; }
-  .brand .tag { color: var(--muted); font-size: 12px; }
+  #status.ok { color: #3ddc97; }
+  #status.err { color: var(--danger); }
 
-  .status {
-    margin-left: auto; padding: 5px 12px; border-radius: 999px;
-    background: var(--panel-2); border: 1px solid var(--border);
-    font-size: 13px; color: var(--muted);
+  /* ---------- Barra de controles ---------- */
+  .controls {
+    display: flex; flex-wrap: wrap; gap: .7rem 1.5rem;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: .4rem 1.4rem 1rem;
   }
-  .status.ok { color: var(--ok); border-color: rgba(74,222,128,.4); }
-  .status.err { color: var(--err); border-color: rgba(248,113,113,.5); }
+  .group { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  .group .glabel {
+    width: 100%; font-size: .68rem; text-transform: uppercase;
+    letter-spacing: .12em; color: var(--muted); margin-bottom: .1rem;
+  }
+  .ctrl {
+    display: flex; align-items: center; gap: .45rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .4rem .6rem;
+  }
+  .ctrl label, .ctrl .lbl { color: var(--muted); font-size: .8rem; }
+  select, input[type="range"] { accent-color: var(--accent); }
+  select {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: .25rem .4rem;
+  }
+  input[type="range"] { width: 110px; }
+  .val { font-variant-numeric: tabular-nums; color: var(--text); font-size: .8rem; min-width: 2.2em; }
 
-  .main {
-    display: flex; gap: 12px; flex: 1; min-height: 0;
+  button, .file-btn {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: .45rem .8rem; font-size: .85rem; cursor: pointer;
+    transition: border-color .15s, background .15s, transform .05s;
+  }
+  button:hover, .file-btn:hover { border-color: var(--accent); }
+  button:active { transform: translateY(1px); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #221302; }
+  button.primary:hover { background: #ffc477; }
+  .file-btn input[type="file"] { display: none; }
+
+  .seg {
+    display: flex; border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .seg button {
+    border: 0; border-radius: 0; background: var(--panel);
+    padding: .45rem .8rem; font-size: .85rem; color: var(--muted);
+  }
+  .seg button.on { background: var(--accent); color: #221302; }
+
+  /* ---------- Paneles ---------- */
+  main.panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    padding: 0 1.4rem 1.2rem;
+    flex: 1;
+  }
+  @media (max-width: 920px) {
+    main.panels { grid-template-columns: 1fr; }
   }
   .panel {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; display: flex; flex-direction: column;
-    min-height: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: .8rem;
+    display: flex; flex-direction: column; gap: .6rem;
+    min-width: 0;
   }
-  .panel.left { flex: 0 0 300px; padding: 14px; gap: 12px; }
-  .panel.center, .panel.right { flex: 1; align-items: center; justify-content: center; padding: 12px; position: relative; }
-
-  .group { display: flex; flex-direction: column; gap: 7px; }
-  .group > label, .group > .lbl {
-    font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
-    color: var(--muted);
+  .panel h2 {
+    margin: 0; font-size: .9rem; font-weight: 600;
+    color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
+    display: flex; justify-content: space-between; align-items: center;
   }
-  .row { display: flex; gap: 8px; align-items: center; }
-  .row.grow { flex: 1; }
-  .grow { flex: 1; }
-
-  select, input[type="file"] {
-    background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 7px 9px; font: inherit; width: 100%;
+  .panel h2 .tag {
+    font-size: .7rem; text-transform: none; letter-spacing: 0;
+    color: var(--accent-2); border: 1px solid var(--border);
+    padding: .15rem .5rem; border-radius: 999px;
   }
-  select { cursor: pointer; }
-
-  button {
-    background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 7px 11px; font: inherit; cursor: pointer;
-    transition: background .12s, border-color .12s;
+  .canvas-wrap canvas#freq { cursor: crosshair; }
+  body.has-image .canvas-wrap canvas#freq { cursor: none; }
+  #brushCur { position: absolute; inset: 0; pointer-events: none; }
+  .samples-row { margin-top: auto; }
+  .samples-row select { flex: 1; min-width: 0; }
+  .dropzone {
+    position: fixed; inset: 0; z-index: 50;
+    display: none; place-items: center;
+    background: rgba(8, 12, 13, .85);
+    border: 3px dashed var(--accent);
+    font-size: 1.15rem; color: var(--text);
   }
-  button:hover { background: #1f2531; }
-  button:disabled { opacity: .4; cursor: default; }
-  button.primary { background: var(--accent); color: #04222b; border-color: var(--accent); font-weight: 600; }
-  button.primary:hover { filter: brightness(1.08); }
-  button.ghost { background: transparent; }
-
-  .seg { display: flex; gap: 4px; }
-  .seg button { flex: 1; padding: 6px 8px; font-size: 13px; }
-  .seg button.on { background: var(--accent-2); color: #2a1c02; border-color: var(--accent-2); font-weight: 600; }
-
-  .range { display: flex; align-items: center; gap: 8px; }
-  .range input[type="range"] { flex: 1; accent-color: var(--accent-2); }
-  .range .val { min-width: 28px; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent-2); }
-
-  .spacer { flex: 1; }
-  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .actions button.full { grid-column: 1 / -1; }
-
-  canvas {
-    background: #000; border-radius: 8px;
-    max-width: 100%; max-height: 100%;
-    width: auto; height: auto;
-    aspect-ratio: 1;
-    object-fit: contain;
-    display: block;
-  }
-  .stage { position: relative; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
-  #spatial, #freq { max-width: 100%; max-height: 100%; }
-  /* freq canvas receives pointer events; brushCur overlays it cursor-only.
-     grid with both in the same cell guarantees pixel-perfect overlap. */
-  .freq-wrap {
+  body.dragging .dropzone { display: grid; }
+  .canvas-wrap {
     position: relative;
-    display: grid;
-    width: 100%; height: 100%;
-    place-items: center;
+    aspect-ratio: 1;
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
   }
-  .freq-wrap canvas { grid-area: 1 / 1; }
-  #freq { touch-action: none; cursor: crosshair; z-index: 1; }
-  #brushCur { z-index: 2; pointer-events: none; }
-
-  .hint { font-size: 11px; color: var(--muted); text-align: center; padding: 2px 4px; }
-
-  @media (max-width: 900px) {
-    body { overflow: auto; }
-    .app { height: auto; min-height: 100%; }
-    .main { flex-direction: column; }
-    .panel.left { flex: none; }
-    .panel.center, .panel.right { min-height: 320px; }
+  .canvas-wrap canvas {
+    width: 100%; height: 100%; display: block;
+    image-rendering: auto;
+  }
+  footer {
+    padding: 0 1.4rem 1rem; color: var(--muted); font-size: .78rem;
   }
 </style>
 </head>
 <body>
-<div class="app">
-  <div class="topbar">
-    <div class="brand">
-      <img src="icon.png" alt="Croque">
-      <div>
-        <h1>Croque <span class="phon">[kʁɔk]</span></h1>
-        <div class="tag">frequency-domain image editor · pure-JS FFT</div>
-      </div>
+
+<header>
+  <div>
+    <h1><img src="icon.png" alt="" width="24" height="24" style="border-radius:5px;vertical-align:-4px;margin-right:.35rem"><span class="logo">Croque</span> — frequency-domain image editor</h1>
+    <div class="sub">Paint on the spectrum (notch filters) and watch the image update in real time. Hermitian symmetry included.</div>
+  </div>
+  <div id="status">Preparing…</div>
+</header>
+
+<div class="controls">
+  <div class="group">
+    <span class="glabel">Spatial image (left)</span>
+    <label class="file-btn">Load image <input type="file" id="file" accept="image/*"></label>
+
+    <div class="ctrl">
+      <label for="size">FFT size</label>
+      <select id="size">
+        <option value="128">128 × 128</option>
+        <option value="256">256 × 256</option>
+        <option value="512" selected>512 × 512</option>
+        <option value="1024">1024 × 1024</option>
+      </select>
     </div>
-    <div id="status" class="status">Loading…</div>
+
+    <button id="download" class="primary" title="Saves both domains as PNG (spatial + spectrum)">Download PNGs</button>
   </div>
 
-  <div class="main">
-    <!-- LEFT: source / spatial controls -->
-    <div class="panel left">
-      <div class="group">
-        <span class="lbl">Image</span>
-        <div class="row">
-          <button id="fileBtn" class="primary" type="button" style="flex:1">Load image…</button>
-          <input type="file" id="file" accept="image/*" style="display:none">
-        </div>
-        <div class="row">
-          <label for="sample" style="flex:0 0 auto">Sample</label>
-          <select id="sample" class="grow" title="Classic test images (need a local server from file://)">
-            <option value="">— choose —</option>
-          </select>
-        </div>
-        <div class="row">
-          <label for="size" style="flex:0 0 auto">Size</label>
-          <select id="size" class="grow">
-            <option value="128">128 × 128</option>
-            <option value="256">256 × 256</option>
-            <option value="512" selected>512 × 512</option>
-            <option value="1024">1024 × 1024</option>
-          </select>
-        </div>
-      </div>
+  <div class="group">
+    <span class="glabel">Spectrum (right)</span>
 
-      <div class="group">
-        <span class="lbl">Spatial <span id="spTag" class="grow" style="float:right;color:var(--accent)"></span></span>
-        <div class="stage">
-          <canvas id="spatial" width="512" height="512"></canvas>
-        </div>
-      </div>
-
-      <div class="actions">
-        <button id="lp" type="button">Low-Pass</button>
-        <button id="hp" type="button">High-Pass</button>
-        <button id="undo" type="button" disabled>Undo</button>
-        <button id="reset" type="button">Reset All</button>
-        <button id="download" type="button" class="full">Download PNGs</button>
-      </div>
-
-      <div class="hint">1/2/3 action · L/H pass · R reset · Ctrl+Z undo</div>
+    <div class="ctrl">
+      <label for="brush">Brush</label>
+      <input type="range" id="brush" min="2" max="80" value="14">
+      <span class="val" id="brushVal">14</span>
     </div>
 
-    <!-- CENTER: spectrum canvas (the one you paint on) -->
-    <div class="panel center">
-      <div class="freq-wrap">
-        <canvas id="freq" width="512" height="512"></canvas>
-        <canvas id="brushCur" width="512" height="512"></canvas>
-      </div>
+    <div class="seg" id="actionSeg" title="What each brush stroke does">
+      <button data-act="atten" class="on">Attenuate ×10 %</button>
+      <button data-act="zero">Null out</button>
+      <button data-act="restore">Restore</button>
     </div>
 
-    <!-- RIGHT: brush + view controls -->
-    <div class="panel right" style="flex:0 0 240px; padding:14px; gap:14px; align-items:stretch; justify-content:flex-start;">
-      <div class="group">
-        <span class="lbl">Brush</span>
-        <div class="range">
-          <input type="range" id="brush" min="2" max="120" value="14">
-          <span class="val" id="brushVal">14</span>
-        </div>
-      </div>
-      <div class="group">
-        <span class="lbl">Action</span>
-        <div class="seg" id="actionSeg">
-          <button type="button" data-act="atten" class="on">Attenuate ×10%</button>
-          <button type="button" data-act="zero">Null</button>
-          <button type="button" data-act="restore">Restore</button>
-        </div>
-      </div>
-      <div class="group">
-        <span class="lbl">Spectrum view</span>
-        <div class="seg" id="viewSeg">
-          <button type="button" data-view="mag" class="on">Magnitude</button>
-          <button type="button" data-view="phase">Phase</button>
-        </div>
-      </div>
-      <div class="spacer"></div>
-      <div class="hint">
-        Paint on the spectrum (center). Every stroke is mirrored at (−x, −y)
-        (Hermitian) so the inverse stays real. Edits act on luminance; color
-        passes through.
-      </div>
+    <div class="seg" id="viewSeg">
+      <button data-view="mag" class="on">Magnitude (log)</button>
+      <button data-view="phase">Phase</button>
     </div>
+
+    <button id="lp" title="Keep only the central disc">Low-Pass</button>
+    <button id="hp" title="Keep only the outer ring">High-Pass</button>
+    <button id="undo" disabled title="Undo last stroke/preset (Ctrl/Cmd+Z)">Undo</button>
+    <button id="reset">Reset All</button>
   </div>
 </div>
+
+<main class="panels">
+  <section class="panel">
+    <h2>Spatial domain <span class="tag" id="spTag">—</span></h2>
+    <div class="canvas-wrap"><canvas id="spatial"></canvas></div>
+    <div class="ctrl samples-row">
+      <label for="sample">Sample</label>
+      <select id="sample"><option value="">— choose —</option></select>
+    </div>
+  </section>
+  <section class="panel">
+    <h2>Frequency domain <span class="tag">paint here</span></h2>
+    <div class="canvas-wrap"><canvas id="freq"></canvas><canvas id="brushCur"></canvas></div>
+  </section>
+</main>
+
+<footer>
+  Everything runs in your browser: a custom 2D FFT engine in pure JavaScript,
+  no external libraries (works offline, even from <code>file://</code>).
+  Color is processed in YUV — the brush and presets act on luminance while
+  color (U/V) passes through. The inverse FFT runs in a Web Worker when
+  available. Every stroke is mirrored at (−x, −y) about the center to
+  preserve Hermitian symmetry, so the IFFT always yields a real image.
+</footer>
+
+<div class="dropzone">Drop image to load</div>
+
 <script>
 "use strict";
 /* ================================================================
@@ -1040,8 +1043,6 @@ if (!lastSource) {
     })
     .catch(() => { if (seq === loadSeq) loadFromImage(proceduralImage()); });
 }
-// "Load image…" button opens the hidden file input.
-document.getElementById("fileBtn").addEventListener("click", () => document.getElementById("file").click());
 updateUndoBtn();
 </script>
 </body>
