@@ -36,7 +36,7 @@ function extractFn(name) {
 }
 
 const engine =
-  "let N, twRe, twIm, rev, workRe, workIm;\n" +
+  "let N, twRe, twIm, rev, workRe, workIm, stamps, frameStamp;\n" +
   extractFn("halfShift") + "\n" +
   extractFn("prepFFT") + "\n" +
   extractFn("fft1D") + "\n" +
@@ -57,6 +57,7 @@ function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
 
 // ---- 1) Forward FFT vs naive O(N^2) DFT (float32 input) ----
 N = 16; prepFFT();
+workRe = new Float32Array(N * N); workIm = new Float32Array(N * N);
 const n = N;
 const x = new Float32Array(n * n), xi = new Float32Array(n * n);
 for (let i = 0; i < n * n; i++) x[i] = rnd() * 255;
@@ -106,6 +107,7 @@ report("IFFT of Hermitian spectrum is real", imMax < 1e-3, "|Im|max=" + imMax.to
 
 // ---- 5) Throughput at app scale (informational; lenient bound for CI) ----
 N = 512; prepFFT();
+workRe = new Float32Array(N * N); workIm = new Float32Array(N * N);
 const big = new Float32Array(N * N), bi = new Float32Array(N * N);
 for (let i = 0; i < big.length; i++) big[i] = rnd() * 255;
 const t0 = Date.now();

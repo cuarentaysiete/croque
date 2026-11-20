@@ -1,263 +1,39 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Croque — frequency-domain image editor</title>
-<link rel="icon" type="image/png" href="icon.png">
-<style>
-  :root {
-    --bg: #101314;
-    --panel: #181d1f;
-    --panel-2: #20272a;
-    --border: #2e383c;
-    --text: #eef2f1;
-    --muted: #93a5a8;
-    --accent: #ffb454;
-    --accent-2: #2dd4bf;
-    --danger: #ff6b6b;
-    --radius: 14px;
-    font-size: 15px;
-  }
-  * { box-sizing: border-box; }
-  html, body {
-    margin: 0; min-height: 100vh;
-      background: radial-gradient(1200px 700px at 70% -10%, #16262a 0%, var(--bg) 55%);
-    color: var(--text);
-    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
-  }
-  body { display: flex; flex-direction: column; }
-
-  header {
-    display: flex; align-items: baseline; justify-content: space-between;
-    flex-wrap: wrap; gap: .5rem;
-    padding: 1rem 1.4rem .6rem;
-  }
-  header h1 { font-size: 1.25rem; margin: 0; letter-spacing: .02em; }
-  header h1 .logo { color: var(--accent); }
-  header .sub { color: var(--muted); font-size: .85rem; }
-  #status {
-    font-size: .8rem; color: var(--accent-2);
-    padding: .3rem .7rem; border: 1px solid var(--border);
-    border-radius: 999px; background: var(--panel);
-    transition: color .2s;
-  }
-  #status.ok { color: #3ddc97; }
-  #status.err { color: var(--danger); }
-
-  /* ---------- Barra de controles ---------- */
-  .controls {
-    display: flex; flex-wrap: wrap; gap: .7rem 1.5rem;
-    align-items: flex-start;
-    justify-content: space-between;
-    padding: .4rem 1.4rem 1rem;
-  }
-  .group { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-  .group .glabel {
-    width: 100%; font-size: .68rem; text-transform: uppercase;
-    letter-spacing: .12em; color: var(--muted); margin-bottom: .1rem;
-  }
-  .ctrl {
-    display: flex; align-items: center; gap: .45rem;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: .4rem .6rem;
-  }
-  .ctrl label, .ctrl .lbl { color: var(--muted); font-size: .8rem; }
-  select, input[type="range"] { accent-color: var(--accent); }
-  select {
-    background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 8px; padding: .25rem .4rem;
-  }
-  input[type="range"] { width: 110px; }
-  .val { font-variant-numeric: tabular-nums; color: var(--text); font-size: .8rem; min-width: 2.2em; }
-
-  button, .file-btn {
-    background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--border); border-radius: 10px;
-    padding: .45rem .8rem; font-size: .85rem; cursor: pointer;
-    transition: border-color .15s, background .15s, transform .05s;
-  }
-  button:hover, .file-btn:hover { border-color: var(--accent); }
-  button:active { transform: translateY(1px); }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #221302; }
-  button.primary:hover { background: #ffc477; }
-  .file-btn input[type="file"] { display: none; }
-
-  .seg {
-    display: flex; border: 1px solid var(--border);
-    border-radius: 10px; overflow: hidden;
-  }
-  .seg button {
-    border: 0; border-radius: 0; background: var(--panel);
-    padding: .45rem .8rem; font-size: .85rem; color: var(--muted);
-  }
-  .seg button.on { background: var(--accent); color: #221302; }
-
-  /* ---------- Paneles ---------- */
-  main.panels {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    padding: 0 1.4rem 1.2rem;
-    flex: 1;
-  }
-  @media (max-width: 920px) {
-    main.panels { grid-template-columns: 1fr; }
-  }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: .8rem;
-    display: flex; flex-direction: column; gap: .6rem;
-    min-width: 0;
-  }
-  .panel h2 {
-    margin: 0; font-size: .9rem; font-weight: 600;
-    color: var(--muted); text-transform: uppercase; letter-spacing: .08em;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .panel h2 .tag {
-    font-size: .7rem; text-transform: none; letter-spacing: 0;
-    color: var(--accent-2); border: 1px solid var(--border);
-    padding: .15rem .5rem; border-radius: 999px;
-  }
-  .canvas-wrap canvas#freq { cursor: crosshair; }
-  body.has-image .canvas-wrap canvas#freq { cursor: none; }
-  #brushCur { position: absolute; inset: 0; pointer-events: none; }
-  .samples-row { margin-top: auto; }
-  .samples-row select { flex: 1; min-width: 0; }
-  .dropzone {
-    position: fixed; inset: 0; z-index: 50;
-    display: none; place-items: center;
-    background: rgba(8, 12, 13, .85);
-    border: 3px dashed var(--accent);
-    font-size: 1.15rem; color: var(--text);
-  }
-  body.dragging .dropzone { display: grid; }
-  .canvas-wrap {
-    position: relative;
-    aspect-ratio: 1;
-    background: #000;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .canvas-wrap canvas {
-    width: 100%; height: 100%; display: block;
-    image-rendering: auto;
-  }
-  footer {
-    padding: 0 1.4rem 1rem; color: var(--muted); font-size: .78rem;
-  }
-</style>
-</head>
-<body>
-
-<header>
-  <div>
-    <h1><img src="icon.png" alt="" width="24" height="24" style="border-radius:5px;vertical-align:-4px;margin-right:.35rem"><span class="logo">Croque</span> — frequency-domain image editor</h1>
-    <div class="sub">Paint on the spectrum (notch filters) and watch the image update in real time. Hermitian symmetry included.</div>
-  </div>
-  <div id="status">Preparing…</div>
-</header>
-
-<div class="controls">
-  <div class="group">
-    <span class="glabel">Spatial image (left)</span>
-    <label class="file-btn">Load image <input type="file" id="file" accept="image/*"></label>
-
-    <div class="ctrl">
-      <label for="size">FFT size</label>
-      <select id="size">
-        <option value="128">128 × 128</option>
-        <option value="256">256 × 256</option>
-        <option value="512" selected>512 × 512</option>
-      </select>
-    </div>
-
-    <button id="download" class="primary" title="Saves both domains as PNG (spatial + spectrum)">Download PNGs</button>
-  </div>
-
-  <div class="group">
-    <span class="glabel">Spectrum (right)</span>
-
-    <div class="ctrl">
-      <label for="brush">Brush</label>
-      <input type="range" id="brush" min="2" max="80" value="14">
-      <span class="val" id="brushVal">14</span>
-    </div>
-
-    <div class="seg" id="actionSeg" title="What each brush stroke does">
-      <button data-act="atten" class="on">Attenuate ×10 %</button>
-      <button data-act="zero">Null out</button>
-      <button data-act="restore">Restore</button>
-    </div>
-
-    <div class="seg" id="viewSeg">
-      <button data-view="mag" class="on">Magnitude (log)</button>
-      <button data-view="phase">Phase</button>
-    </div>
-
-    <button id="lp" title="Keep only the central disc">Low-Pass</button>
-    <button id="hp" title="Keep only the outer ring">High-Pass</button>
-    <button id="reset">Reset All</button>
-  </div>
-</div>
-
-<main class="panels">
-  <section class="panel">
-    <h2>Spatial domain <span class="tag" id="spTag">—</span></h2>
-    <div class="canvas-wrap"><canvas id="spatial"></canvas></div>
-    <div class="ctrl samples-row">
-      <label for="sample">Sample</label>
-      <select id="sample"><option value="">— choose —</option></select>
-    </div>
-  </section>
-  <section class="panel">
-    <h2>Frequency domain <span class="tag">paint here</span></h2>
-    <div class="canvas-wrap"><canvas id="freq"></canvas><canvas id="brushCur"></canvas></div>
-  </section>
-</main>
-
-<footer>
-  Everything runs in your browser: a custom 2D FFT engine in pure JavaScript,
-  no external libraries (works offline, even from <code>file://</code>).
-  Every stroke is mirrored at (−x, −y) about the center to preserve Hermitian
-  symmetry, so the IFFT always yields a real image.
-</footer>
-
-<div class="dropzone">Drop image to load</div>
-
 <script>
 "use strict";
 /* ================================================================
- * CROQUE — frequency-domain image editor
+ * CROQUE — frequency-domain image editor (YUV color)
  * ------------------------------------------------------------
- * Pipeline:
- *   image → N×N grayscale luminance (power of two)
+ * Pipeline (per channel Y, U, V):
+ *   image → N×N BT.601 YUV (power of two, cover-cropped)
  *        → 2D forward FFT (own Cooley–Tukey engine)
  *        → fftshift (DC to center)
- *        → interactive editing of the complex spectrum (brush + presets)
- *        → ifftshift + 2D IFFT
- *        → 0..255 normalization → spatial canvas
+ *        → interactive editing of the complex Y spectrum
+ *          (brush + presets; U/V spectra pass through untouched)
+ *        → ifftshift + 2D IFFT (worker when available, else main)
+ *        → YUV→RGB (min–max on Y) → spatial canvas
  * Every spectral edit is mirrored at the opposite point (−x, −y)
- * about the center (Hermitian symmetry) so the IFFT always yields a
- * strictly real image.
+ * about the center (Hermitian symmetry) so each IFFT always yields
+ * a strictly real channel.
  * ================================================================ */
 
 // ---------- Global state ----------
 let N = 512;                 // FFT side length (power of two)
-let appReady = true;   // everything is local: no external dependencies
 let hasImage = false;
 let view = "mag";            // "mag" (log) | "phase"
 let action = "atten";        // brush action: atten | zero | restore
-let re, im;                  // CENTERED complex spectrum (post-fftshift)
-let re0, im0;                // original copy (for "restore")
-let logMagMax = 1;           // fixed log scale, computed from the original image
+// Y channel (edited) — CENTERED spectra (post-fftshift)
+let re, im;
+let re0, im0;                // original Y copy (for "restore")
+// U/V channels (pass-through, kept in color)
+let reU, imU, reV, imV;
+let reU0, imU0, reV0, imV0;
+let logMagMax = 1;           // fixed log scale, computed from the original Y
 let lastSource = null;       // most recently loaded image/canvas
-let workRe, workIm;          // reusable IFFT buffers
+let stamps;                  // per-pixel frame stamp (brush dedup, see applyAt)
+let frameStamp = 0;          // current frame id for `stamps`
+let spImg, frImg;            // reusable ImageData buffers
+let undoStack = [];          // [{re,im}] snapshots, oldest first (cap UNDO_CAP)
+const UNDO_CAP = 12;
 
 // ---------- DOM ----------
 const statusEl = document.getElementById("status");
@@ -274,33 +50,41 @@ const brushVal   = document.getElementById("brushVal");
 const actionSeg  = document.getElementById("actionSeg");
 const viewSeg    = document.getElementById("viewSeg");
 const sampleSel  = document.getElementById("sample");
+const undoBtn    = document.getElementById("undo");
 
 function setStatus(msg, cls) {
   statusEl.textContent = msg;
   statusEl.className = cls || "";
 }
 
-// ---------- Work queue ----------
-// Kept as a hook in case we add async work later; for now
-// everything resolves in place.
-function whenReady(fn) { fn(); }
-
-// ---------- Image → luminance ----------
-// Resizes the source to N×N and extracts BT.601 luminance
-// (0.299·R + 0.587·G + 0.114·B) into a Float32Array.
-function imageToLuminance(src) {
+// ---------- Image → YUV channels ----------
+// Resizes the source (cover-fit) to N×N and extracts BT.601 YUV:
+//   Y = 0.299R + 0.587G + 0.114B
+//   U = 0.492(B − Y) + 128,  V = 0.877(R − Y) + 128
+function imageToChannels(src) {
   const c = document.createElement("canvas");
   c.width = c.height = N;
   const cx = c.getContext("2d");
   cx.imageSmoothingQuality = "high";
-  cx.drawImage(src, 0, 0, N, N);
+  // Cover-fit: scale the source to fill the N×N square and center-crop,
+  // so non-square images are never stretched.
+  const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height;
+  const s = Math.max(N / sw, N / sh);
+  const dw = sw * s, dh = sh * s;
+  cx.drawImage(src, (N - dw) / 2, (N - dh) / 2, dw, dh);
   let data;
   try { data = cx.getImageData(0, 0, N, N).data; }
   catch { throw new Error("canvas tainted by cross-origin data; use a local image or one served with CORS"); }
-  const gray = new Float32Array(N * N);
-  for (let i = 0, p = 0; i < gray.length; i++, p += 4)
-    gray[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
-  return gray;
+  const n = N * N;
+  const y = new Float32Array(n), u = new Float32Array(n), v = new Float32Array(n);
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const R = data[p], G = data[p + 1], B = data[p + 2];
+    const yy = 0.299 * R + 0.587 * G + 0.114 * B;
+    y[i] = yy;
+    u[i] = 0.492 * (B - yy) + 128;
+    v[i] = 0.877 * (R - yy) + 128;
+  }
+  return { y, u, v };
 }
 
 // ---------- fftshift / ifftshift ----------
@@ -326,7 +110,6 @@ function halfShift(srcRe, srcIm, dstRe, dstIm) {
 // The public OpenCV.js builds don't include the dft module, so the
 // transform lives here: in-place 1D FFT (bit-reversal permutation +
 // butterflies with precomputed twiddles) applied to rows then columns.
-// 512×512 runs in a few dozen ms — real-time via requestAnimationFrame.
 function prepFFT() {
   const half = N >> 1;
   twRe = new Float32Array(half);
@@ -342,8 +125,7 @@ function prepFFT() {
     for (let b = 0; b < bits; b++) { r = (r << 1) | (v & 1); v >>= 1; }
     rev[i] = r;
   }
-  workRe = new Float32Array(N * N);
-  workIm = new Float32Array(N * N);
+  stamps = new Uint32Array(N * N);
 }
 let twRe, twIm, rev;   // twiddles + permutation (recreated in prepFFT)
 
@@ -385,60 +167,283 @@ function fft2D(re, im, invert) {
   }
 }
 
-// ---------- Forward FFT (load / image change) ----------
-// Input: N×N luminance Float32Array.
-// Output: CENTERED re/im (fftshift) + backup copy + log scale.
-function forwardFFT(gray) {
-  // Input complex array: real = luminance, imaginary = 0.
-  re = new Float32Array(gray);
-  im = new Float32Array(N * N);
+// ---------- Forward transforms (load / image change) ----------
+// Input: { y, u, v } N×N Float32Arrays (0..255, BT.601 YUV).
+// Output: centered re/im per channel + backup copies + log scale (on Y).
+function forwardAll(ch) {
+  const n = N * N;
+  re = new Float32Array(ch.y); im = new Float32Array(n);
   fft2D(re, im, false);                        // forward 2D FFT
-
-  const rc = new Float32Array(N * N), ic = new Float32Array(N * N);
+  const rc = new Float32Array(n), ic = new Float32Array(n);
   halfShift(re, im, rc, ic);                  // fftshift → DC to center
   re = rc; im = ic;
   re0 = new Float32Array(re); im0 = new Float32Array(im);
 
-  // Fixed log scale (max of the original magnitude): stops the
+  reU = new Float32Array(ch.u); imU = new Float32Array(n);
+  fft2D(reU, imU, false);
+  const rUc = new Float32Array(n), iUc = new Float32Array(n);
+  halfShift(reU, imU, rUc, iUc);
+  reU = rUc; imU = iUc;
+  reU0 = new Float32Array(reU); imU0 = new Float32Array(imU);
+
+  reV = new Float32Array(ch.v); imV = new Float32Array(n);
+  fft2D(reV, imV, false);
+  const rVc = new Float32Array(n), iVc = new Float32Array(n);
+  halfShift(reV, imV, rVc, iVc);
+  reV = rVc; imV = iVc;
+  reV0 = new Float32Array(reV); imV0 = new Float32Array(imV);
+
+  // Fixed log scale (max of the original Y magnitude): stops the
   // spectrum from "auto-brightening" as we attenuate regions.
   logMagMax = 1e-6;
-  for (let i = 0; i < re.length; i++)
+  for (let i = 0; i < n; i++)
     logMagMax = Math.max(logMagMax, Math.log1p(Math.hypot(re[i], im[i])));
 }
 
-// ---------- IFFT (every paint cycle) ----------
-// Re-centers (ifftshift) into reusable buffers, applies the 2D IFFT,
-// normalizes the real part to 0..255 and draws the spatial canvas.
-function inverseFFT() {
-  halfShift(re, im, workRe, workIm);        // ifftshift (same op as fftshift)
-  fft2D(workRe, workIm, true);              // 2D IFFT (already scales by 1/N²)
+// ---------- Inverse transform (every paint cycle) ----------
+// The edited Y spectrum is ifftshifted + IFFTed together with the
+// pass-through U/V spectra, then combined YUV→RGB and drawn.
+// `fftSeq` is a monotonic token: each dispatch captures it, and a result
+// only draws if it is still the newest. The worker does the heavy
+// ifftshift+IFFT off-thread and returns yR/uR/vR (already 1/N²-scaled);
+// the main-thread path does the same synchronously.
+let fftSeq = 0;
+let worker = null;
 
-  // Min-max normalize to 0..255 and paint.
+// Main-thread inverse for all three channels → spatial canvas.
+function inverseMain() {
+  const n = N * N, tok = fftSeq;
+  const yR = new Float32Array(n), yI = new Float32Array(n);
+  halfShift(re, im, yR, yI);          // ifftshift
+  fft2D(yR, yI, true);                // IFFT (scales by 1/N²)
+  const uR = new Float32Array(n), uI = new Float32Array(n);
+  halfShift(reU, imU, uR, uI);
+  fft2D(uR, uI, true);
+  const vR = new Float32Array(n), vI = new Float32Array(n);
+  halfShift(reV, imV, vR, vI);
+  fft2D(vR, vI, true);
+  if (tok !== fftSeq) return;         // superseded by a newer cycle
+  drawSpatial(yR, uR, vR);
+}
+
+// Worker result: inverse FFTs (1/N²-scaled) of the spectra sent.
+function onWorkerResult(e) {
+  const d = e.data;                   // { tok, yR, uR, vR } as Float32Arrays
+  if (d.tok !== fftSeq) return;       // stale: a newer cycle superseded it
+  drawSpatial(d.yR, d.uR, d.vR);
+}
+
+// YUV (BT.601) → RGB into the spatial ImageData, clamped to 0..255.
+// Min–max on Y maps the result to full range; U/V are inverse FFTs of
+// 128-centered spectra so they swing around 128 — clamping handles the
+// occasional excursion past 0..255.
+function drawSpatial(yR, uR, vR) {
+  const n = N * N;
   let mn = Infinity, mx = -Infinity;
-  for (let i = 0; i < workRe.length; i++) {
-    const v = workRe[i];
+  for (let i = 0; i < n; i++) {
+    const v = yR[i];
     if (v < mn) mn = v;
     if (v > mx) mx = v;
   }
-  const scale = (mx - mn) > 1e-9 ? 255 / (mx - mn) : 1;
-  const img = sctx.createImageData(N, N);
-  for (let i = 0, p = 0; i < N * N; i++, p += 4) {
-    const v = (workRe[i] - mn) * scale;
-    img.data[p] = img.data[p + 1] = img.data[p + 2] = v;
-    img.data[p + 3] = 255;
+  const off = (mx - mn) > 1e-9 ? 255 / (mx - mn) : 1, add = -mn * off;
+  const d = spImg.data;
+  for (let i = 0, p = 0; i < n; i++, p += 4) {
+    const yy = yR[i] * off + add;
+    const uu = uR[i] - 128, vv = vR[i] - 128;
+    const r = yy + vv * 1.140;
+    const g = yy - uu * 0.394 - vv * 0.581;
+    const b = yy + vv * 1.402;
+    d[p]     = r > 255 ? 255 : r < 0 ? 0 : r;
+    d[p + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
+    d[p + 2] = b > 255 ? 255 : b < 0 ? 0 : b;
+    d[p + 3] = 255;
   }
-  sctx.putImageData(img, 0, 0);
+  sctx.putImageData(spImg, 0, 0);
+}
+
+// Dispatch the next IFFT: worker when available, main thread otherwise.
+// Bumps fftSeq once; the captured token travels with the request so a
+// late result is dropped if a newer cycle has since started.
+function inverseFFT() {
+  fftSeq++;
+  const tok = fftSeq;
+  if (worker) {
+    const n = N * N;
+    const yR = re.slice(), yI = im.slice();
+    const uR = reU.slice(), uI = imU.slice();
+    const vR = reV.slice(), vI = imV.slice();
+    worker.postMessage(
+      { tok, N, yR, yI, uR, uI, vR, vI },
+      [yR.buffer, yI.buffer, uR.buffer, uI.buffer, vR.buffer, vI.buffer]
+    );
+  } else {
+    inverseMain();
+  }
+}
+
+// ---------- Inline worker: off-thread ifftshift + 3× IFFT ----------
+// Built as a Blob so the app stays a single file (works from file:// too,
+// where module workers and some dynamic imports are blocked). The source
+// is a plain script (no imports) that re-derives twiddles for its N.
+const WORKER_SRC = `
+"use strict";
+onmessage = (e) => {
+  const { tok, N, yR, yI, uR, uI, vR, vI } = e.data;
+  const n = N * N, half = N >> 1, mask = N - 1;
+  const twRe = new Float32Array(half), twIm = new Float32Array(half);
+  for (let k = 0; k < half; k++) { twRe[k] = Math.cos(2*Math.PI*k/N); twIm[k] = Math.sin(2*Math.PI*k/N); }
+  const bits = Math.log2(N);
+  const rev = new Uint32Array(N);
+  for (let i = 0; i < N; i++) { let r = 0, v = i; for (let b = 0; b < bits; b++) { r = (r<<1)|(v&1); v >>= 1; } rev[i] = r; }
+  function fft1D(rr, ii, off, stride, invert) {
+    for (let i = 0; i < N; i++) { const q = rev[i]; if (q > i) { const a = off+i*stride, b = off+q*stride; let t=rr[a]; rr[a]=rr[b]; rr[b]=t; t=ii[a]; ii[a]=ii[b]; ii[b]=t; } }
+    for (let len = 2; len <= N; len <<= 1) {
+      const hf = len>>1, step = N/len;
+      for (let i = 0; i < N; i += len) for (let j = 0; j < hf; j++) {
+        const k = j*step, wr = twRe[k], wi = invert ? twIm[k] : -twIm[k];
+        const a = off+(i+j)*stride, b = a+hf*stride;
+        const xr = rr[b]*wr - ii[b]*wi, xi = rr[b]*wi + ii[b]*wr;
+        rr[b] = rr[a]-xr; ii[b] = ii[a]-xi; rr[a]+=xr; ii[a]+=xi;
+      }
+    }
+  }
+  // ifftshift (== fftshift for N/2 shift) then IFFT; 1/N² scale.
+  function inv(rr, ii) {
+    for (let y = 0; y < N; y++) { const sr = ((y+half)&mask)*N, dr = y*N; for (let x = 0; x < N; x++) { const s = sr+((x+half)&mask), d = dr+x; const tr=rr[s], ti=ii[s]; rr[s]=0; ii[s]=0; rr[d]=tr; ii[d]=ti; } }
+    for (let y = 0; y < N; y++) fft1D(rr, ii, y*N, 1, true);
+    for (let x = 0; x < N; x++) fft1D(rr, ii, x, N, true);
+    const s = 1/(N*N);
+    for (let i = 0; i < n; i++) { rr[i]*=s; ii[i]*=s; }
+  }
+  inv(yR, yI); inv(uR, uI); inv(vR, vI);
+  postMessage({ tok, yR, uR, vR }, [yR.buffer, uR.buffer, vR.buffer]);
+};
+`;
+
+function startWorker() {
+  try {
+    const blob = new Blob([WORKER_SRC], { type: "text/javascript" });
+    const url = URL.createObjectURL(blob);
+    worker = new Worker(url);
+    URL.revokeObjectURL(url);
+    worker.onmessage = onWorkerResult;
+    worker.onerror = (e) => {
+      // Worker failed: fall back to the main thread for this session.
+      console.warn("FFT worker unavailable, using main thread:", e.message);
+      worker.terminate();
+      worker = null;
+    };
+  } catch (err) {
+    console.warn("Web Workers unavailable, using main thread:", err.message);
+    worker = null;
+  }
+}
+startWorker();
+
+// ---------- Brush (notch filter) with Hermitian symmetry ----------
+// The brush edits the Y (luminance) spectrum only; U/V pass through
+// untouched, so hue is preserved while structure is filtered.
+// KEY RULE (Hermitian symmetry): pixel (x, y) represents the frequency
+// (x − N/2, y − N/2) relative to the center; its conjugate at
+// −(u, v) lives at (N − x, N − y) mod N. Every affected pixel is applied
+// to that partner too, so F(−u,−v) = F*(u,v) is preserved and the IFFT
+// produces a strictly real channel.
+function setPixel(i, action) {
+  if (action === "restore") { re[i] = re0[i]; im[i] = im0[i]; }
+  else if (action === "zero") { re[i] = 0; im[i] = 0; }
+  else { re[i] *= 0.1; im[i] *= 0.1; }   // ×0.1 once per frame (stamp dedup in applyAt)
+}
+
+// Each pixel is edited at most once per animation frame (frame stamp), so
+// the Attenuate action is a predictable ×0.1 per frame: strokes accumulate
+// over time, not per overlapping disc or per mirror write (a brush disc
+// centered on the DC point would otherwise hit a pixel and its conjugate
+// partner in the same pass, double-attenuating it).
+function applyAt(x, y, a) {
+  const i = y * N + x;
+  if (stamps[i] !== frameStamp) { setPixel(i, a); stamps[i] = frameStamp; }
+  const mx = (N - x) % N, my = (N - y) % N;   // conjugate partner (−x, −y)
+  if (mx !== x || my !== y) {
+    const j = my * N + mx;
+    if (stamps[j] !== frameStamp) { setPixel(j, a); stamps[j] = frameStamp; }
+  }
+}
+
+// Brush disc of radius R centered at (cx, cy).
+function paint(cx, cy, R) {
+  const R2 = R * R;
+  for (let dy = -R; dy <= R; dy++) {
+    const y = Math.round(cy) + dy;
+    if (y < 0 || y >= N) continue;
+    for (let dx = -R; dx <= R; dx++) {
+      if (dx * dx + dy * dy > R2) continue;
+      const x = Math.round(cx) + dx;
+      if (x < 0 || x >= N) continue;
+      applyAt(x, y, action);
+    }
+  }
+}
+
+// ---------- Undo ----------
+// Snapshot the Y spectrum (re/im) at stroke start; undo pops and restores.
+// U/V are pass-through (never edited) so they need no snapshot.
+function snapshot() {
+  undoStack.push({ re: re.slice(), im: im.slice() });
+  if (undoStack.length > UNDO_CAP) undoStack.shift();
+  updateUndoBtn();
+}
+function undo() {
+  const s = undoStack.pop();
+  if (!s) return;
+  re = s.re; im = s.im;
+  updateUndoBtn();
+  refresh();
+}
+function updateUndoBtn() {
+  undoBtn.disabled = undoStack.length === 0;
+  undoBtn.title = undoStack.length
+    ? "Undo (" + undoStack.length + " step" + (undoStack.length > 1 ? "s" : "") + ")"
+    : "Nothing to undo";
+}
+
+// ---------- Paint queue + requestAnimationFrame ----------
+// Pointer movements accumulate; each frame paints all pending points
+// and recomputes IFFT + spectrum exactly once. A snapshot is taken once
+// per stroke (on pointerdown) so undo reverts a whole stroke, not a frame.
+let rafPending = false;
+const pending = [];
+
+function queueUpdate() {
+  if (rafPending || !hasImage) return;
+  rafPending = true;
+  requestAnimationFrame(() => {
+    rafPending = false;
+    if (!hasImage) return;
+    frameStamp++;
+    const R = parseInt(brushSel.value, 10);
+    for (const p of pending) paint(p.x, p.y, R);
+    pending.length = 0;
+    renderSpectrum();
+    inverseFFT();
+  });
+}
+
+// Immediate refresh (presets, reset, view change, undo).
+function refresh() {
+  if (!hasImage) return;
+  renderSpectrum();
+  inverseFFT();
 }
 
 // ---------- Spectrum render (right canvas) ----------
 // Magnitude: log(1+|F|) normalized by the original scale.
 // Phase: atan2(Im, Re) in (−π, π] mapped to grayscale.
 function renderSpectrum() {
-  const img = fctx.createImageData(N, N);
+  const img = frImg;
   const d = img.data;
   if (view === "mag") {
     for (let i = 0, p = 0; i < N * N; i++, p += 4) {
-      const v = Math.log1p(Math.hypot(re[i], im[i])) / logMagMax * 255;
+      const v = Math.min(255, Math.log1p(Math.hypot(re[i], im[i])) / logMagMax * 255);
       d[p] = d[p + 1] = d[p + 2] = v;
       d[p + 3] = 255;
     }
@@ -452,70 +457,9 @@ function renderSpectrum() {
   fctx.putImageData(img, 0, 0);
 }
 
-// ---------- Brush (notch filter) with Hermitian symmetry ----------
-// KEY RULE (Hermitian symmetry): pixel (x, y) represents the frequency
-// (x − N/2, y − N/2) relative to the center; its conjugate at
-// −(u, v) lives at (N − x, N − y) mod N. Every affected pixel is applied
-// to that partner too, so F(−u,−v) = F*(u,v) is preserved and the IFFT
-// produces a strictly real image.
-function setPixel(i, action) {
-  if (action === "restore") { re[i] = re0[i]; im[i] = im0[i]; }
-  else if (action === "zero") { re[i] = 0; im[i] = 0; }
-  else { re[i] *= 0.1; im[i] *= 0.1; }   // strong, accumulative attenuation
-}
-
-function applyAt(x, y, a) {
-  const i = y * N + x;
-  setPixel(i, a);
-  const mx = (N - x) % N, my = (N - y) % N;   // conjugate partner (−x, −y)
-  if (mx !== x || my !== y) setPixel(my * N + mx, a);
-}
-
-// Brush disc of radius R centered at (cx, cy).
-function paint(cx, cy, R) {
-  const a = action;
-  const R2 = R * R, c = Math.round(N / 2);
-  for (let dy = -R; dy <= R; dy++) {
-    const y = Math.round(cy) + dy;
-    if (y < 0 || y >= N) continue;
-    for (let dx = -R; dx <= R; dx++) {
-      if (dx * dx + dy * dy > R2) continue;
-      const x = Math.round(cx) + dx;
-      if (x < 0 || x >= N) continue;
-      applyAt(x, y, action);
-    }
-  }
-}
-
-// ---------- Paint queue + requestAnimationFrame ----------
-// Pointer movements accumulate; each frame paints all pending points
-// and recomputes IFFT + spectrum exactly once.
-let rafPending = false;
-const pending = [];
-
-function queueUpdate() {
-  if (rafPending || !hasImage || !appReady) return;
-  rafPending = true;
-  requestAnimationFrame(() => {
-    rafPending = false;
-    if (!hasImage) return;
-    const R = parseInt(brushSel.value, 10);
-    for (const p of pending) paint(p.x, p.y, R);
-    pending.length = 0;
-    renderSpectrum();
-    inverseFFT();
-  });
-}
-
-// Immediate refresh (presets, reset, view change).
-function refresh() {
-  if (!hasImage || !appReady) return;
-  renderSpectrum();
-  inverseFFT();
-}
-
-// Pointer events on the frequency canvas.
+// ---------- Pointer events on the frequency canvas ----------
 let painting = false;
+let paintPtr = null;       // pointerId owning the active stroke
 let lastPt = null;
 let lastHover = null;
 
@@ -543,19 +487,19 @@ function drawCursor(pt) {
   cctx.fillStyle = "rgba(255, 180, 84, .95)";
   cctx.fill();
 }
-function clearCursor() {
-  cctx.clearRect(0, 0, N, N);
-}
+function clearCursor() { cctx.clearRect(0, 0, N, N); }
 
 freq.addEventListener("pointerdown", (e) => {
-  if (!hasImage || !appReady) return;
+  if (!hasImage || painting) return;
   e.preventDefault();
   painting = true;
+  paintPtr = e.pointerId;
   freq.setPointerCapture(e.pointerId);
   lastPt = canvasCoords(e);
   lastHover = lastPt;
   drawCursor(lastHover);
   pending.push(lastPt);
+  snapshot();   // one undo entry per stroke, taken before any paint
   queueUpdate();
 });
 
@@ -563,7 +507,7 @@ freq.addEventListener("pointermove", (e) => {
   const pt = canvasCoords(e);
   lastHover = pt;
   drawCursor(pt);
-  if (!painting) return;
+  if (!painting || e.pointerId !== paintPtr) return;
   // Interpolate the stroke so fast mouse movements leave no gaps.
   const dx = pt.x - lastPt.x, dy = pt.y - lastPt.y;
   const dist = Math.hypot(dx, dy);
@@ -574,7 +518,7 @@ freq.addEventListener("pointermove", (e) => {
   queueUpdate();
 });
 
-const stopPaint = () => { painting = false; };
+const stopPaint = (e) => { if (e.pointerId === paintPtr) { painting = false; paintPtr = null; } };
 freq.addEventListener("pointerup", stopPaint);
 freq.addEventListener("pointercancel", stopPaint);
 freq.addEventListener("pointerleave", () => { lastHover = null; clearCursor(); });
@@ -582,19 +526,20 @@ freq.addEventListener("pointerleave", () => { lastHover = null; clearCursor(); }
 // ---------- Presets ----------
 // Low-pass: keeps the central disc with a smooth cosine edge
 // (avoids the Gibbs ringing of an abrupt cut). High-pass: the opposite.
+// Each preset takes a snapshot first so it is undoable.
 function applyRadial(lowPass) {
+  if (!hasImage) return;
+  snapshot();
   const c = (N - 1) / 2, R = N * 0.15, band = N * 0.04;
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
       const r = Math.hypot(x - c, y - c);
       let t;                                    // attenuation factor 0..1
       if (lowPass) {
-        // 0 inside R, smooth cosine ramp 0→1 across [R, R+band], 1 outside.
         t = r < R ? 0
           : r > R + band ? 1
           : (1 - Math.cos(Math.PI * (r - R) / band)) / 2;
       } else {
-        // 1 inside R, smooth cosine ramp 1→0 across [R, R+band], 0 outside.
         t = r < R ? 1
           : r > R + band ? 0
           : (1 + Math.cos(Math.PI * (r - R) / band)) / 2;
@@ -613,6 +558,8 @@ function setCanvasSizes() {
   spatial.width = spatial.height = N;
   freq.width = freq.height = N;
   brushCur.width = brushCur.height = N;
+  spImg = sctx.createImageData(N, N);
+  frImg = fctx.createImageData(N, N);
 }
 
 function loadFromImage(src) {
@@ -620,13 +567,15 @@ function loadFromImage(src) {
   prepFFT();                               // twiddles + buffers for the new N
   setCanvasSizes();
   lastSource = src;
-  const gray = imageToLuminance(src);
-  forwardFFT(gray);
+  const ch = imageToChannels(src);
+  forwardAll(ch);
   hasImage = true;
   document.body.classList.add("has-image");
   clearCursor();
+  undoStack.length = 0;
+  updateUndoBtn();
   spTag.textContent = N + " × " + N;
-  setStatus("Ready", "ok");
+  setStatus("Ready — paint on the spectrum", "ok");
   refresh();
 }
 
@@ -646,7 +595,7 @@ function proceduralImage() {
   x.strokeStyle = "rgba(34,211,238,.6)";
   for (let i = 0; i < 512; i += 32) {
     x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 512); x.lineWidth = 1; x.stroke();
-    x.beginPath(); x.moveTo(0, i); x.lineTo(512, i); x.stroke();
+    x.beginPath(); x.moveTo(0, i); x.lineTo(512, i); x.lineWidth = 1; x.stroke();
   }
   x.font = "bold 96px sans-serif";
   x.fillStyle = "#fff";
@@ -682,15 +631,29 @@ document.getElementById("lp").addEventListener("click", () => applyRadial(true))
 document.getElementById("hp").addEventListener("click", () => applyRadial(false));
 document.getElementById("reset").addEventListener("click", () => {
   if (!hasImage) return;
+  snapshot();
   re.set(re0);
   im.set(im0);
   refresh();
 });
 
+undoBtn.addEventListener("click", undo);
+
+// Keyboard shortcuts: 1/2/3 brush action, L/H pass, Z undo, R reset.
+window.addEventListener("keydown", (e) => {
+  if (!hasImage) return;
+  const k = e.key.toLowerCase();
+  if (k === "1") actionSeg.querySelector('[data-act="atten"]').click();
+  else if (k === "2") actionSeg.querySelector('[data-act="zero"]').click();
+  else if (k === "3") actionSeg.querySelector('[data-act="restore"]').click();
+  else if (k === "l") document.getElementById("lp").click();
+  else if (k === "h") document.getElementById("hp").click();
+  else if (k === "r") document.getElementById("reset").click();
+  else if (k === "z" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); undo(); }
+});
+
 document.getElementById("download").addEventListener("click", () => {
   if (!hasImage) return;
-  // Two files, both domains. toDataURL is synchronous, so both clicks
-  // happen inside the same user gesture.
   const dl = (url, name) => {
     const a = document.createElement("a");
     a.href = url;
@@ -705,17 +668,23 @@ document.getElementById("download").addEventListener("click", () => {
 // ---------- Image loading (file picker, drag & drop, samples) ----------
 let loadSeq = 0;
 function loadFile(f) {
-  if (!f || !f.type.startsWith("image/")) return;
+  if (!f) return;
+  if (!f.type.startsWith("image/")) { setStatus("That file is not an image (" + (f.type || "unknown type") + ")", "err"); return; }
   const name = f.name;
   const seq = ++loadSeq;
   setStatus("Loading " + name + "…");
   const img = new Image();
+  const url = URL.createObjectURL(f);
   img.onload = () => {
+    URL.revokeObjectURL(url);
     if (seq !== loadSeq) return;   // a newer load superseded this one
     try { loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
   };
-  img.onerror = () => { if (seq === loadSeq) setStatus("Could not load image", "err"); };
-  img.src = URL.createObjectURL(f);
+  img.onerror = () => {
+    URL.revokeObjectURL(url);
+    if (seq === loadSeq) setStatus("Could not load image", "err");
+  };
+  img.src = url;
 }
 
 document.getElementById("file").addEventListener("change", (e) => {
@@ -755,10 +724,16 @@ const SAMPLES = [
   ["house.jpg", "House"],
   ["jetplane.jpg", "Jet plane"],
   ["lake.jpg", "Lake"],
-  ["lena_gray_256.jpg", "Lena (classic)"],
+  ["lena.jpg", "Lena (original)"],
+  ["lena_color_256.jpg", "Lena (color 256)"],
+  ["lena_color_512.jpg", "Lena (color 512)"],
+  ["lena_gray_256.jpg", "Lena (gray 256)"],
+  ["lena_gray_512.jpg", "Lena (gray 512)"],
   ["livingroom.jpg", "Living room"],
   ["mandril_color.jpg", "Mandril (color)"],
+  ["mandril_gray.jpg", "Mandril (gray)"],
   ["peppers_color.jpg", "Peppers (color)"],
+  ["peppers_gray.jpg", "Peppers (gray)"],
   ["pirate.jpg", "Pirate"],
   ["walkbridge.jpg", "Walk bridge"],
   ["woman_blonde.jpg", "Blonde woman"],
@@ -770,9 +745,6 @@ for (const [file, label] of SAMPLES) {
   o.textContent = label;
   sampleSel.appendChild(o);
 }
-// The sample gallery is the one feature that cannot work from file://: the
-// browser blocks fetch() there and taints canvases drawn with file: images,
-// so their pixels can neither be read nor exported. Say so up front.
 if (location.protocol === "file:") {
   sampleSel.title = "The sample gallery needs a local server when the app is opened from file://. Use Load image or drag & drop for your own files.";
 }
@@ -786,12 +758,17 @@ sampleSel.addEventListener("change", () => {
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status))))
     .then((b) => {
       const img = new Image();
+      const url = URL.createObjectURL(b);
       img.onload = () => {
+        URL.revokeObjectURL(url);
         if (seq !== loadSeq) return;
         try { loadFromImage(img); } catch (err) { setStatus("Processing error: " + err.message, "err"); }
       };
-      img.onerror = () => { if (seq === loadSeq) setStatus("Could not load sample", "err"); };
-      img.src = URL.createObjectURL(b);
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        if (seq === loadSeq) setStatus("Could not load sample", "err");
+      };
+      img.src = url;
     })
     .catch(() => {
       if (seq !== loadSeq) return;
@@ -800,7 +777,7 @@ sampleSel.addEventListener("change", () => {
 });
 
 sizeSel.addEventListener("change", () => {
-  if (lastSource) whenReady(() => loadFromImage(lastSource));   // re-FFT the current source
+  if (lastSource) loadFromImage(lastSource);                    // re-FFT the current source
 });
 
 // ---------- Startup ----------
@@ -808,24 +785,29 @@ sizeSel.addEventListener("change", () => {
 // is ready instantly. The default image is fetched as a blob to avoid a
 // tainted canvas when the HTML is opened via file://; if the fetch is
 // not possible (e.g. file:// without a server) a procedural image is used.
-setStatus("Ready — paint on the spectrum", "ok");
 if (!lastSource) {
   const seq = ++loadSeq;
   const img = new Image();
+  let url = null;
   img.onload = () => {
+    if (url) URL.revokeObjectURL(url);
     if (seq !== loadSeq) return;
     try { loadFromImage(img); } catch (e) { setStatus("Error: " + e.message, "err"); }
   };
-  img.onerror = () => { if (seq === loadSeq) loadFromImage(proceduralImage()); };
+  img.onerror = () => {
+    if (url) URL.revokeObjectURL(url);
+    if (seq === loadSeq) loadFromImage(proceduralImage());
+  };
   fetch("icon.png")
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error("HTTP " + r.status))))
     .then((b) => {
       if (seq !== loadSeq) return;
-      img.src = URL.createObjectURL(b);
+      url = URL.createObjectURL(b);
+      img.src = url;
     })
     .catch(() => { if (seq === loadSeq) loadFromImage(proceduralImage()); });
 }
-
+updateUndoBtn();
 </script>
 </body>
 </html>
