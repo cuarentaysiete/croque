@@ -263,6 +263,8 @@ let re0, im0;                // original Y copy (for "restore")
 // U/V channels (pass-through, kept in color)
 let reU, imU, reV, imV;
 let reU0, imU0, reV0, imV0;
+let uSpatial, vSpatial;       // U/V in SPATIAL domain: computed once at load
+                         // (U/V are never edited) -> reused every frame, saving 2 IFFTs/frame
 let logMagMax = 1;           // fixed log scale, computed from the original Y
 let lastSource = null;       // most recently loaded image/canvas
 let stamps;                  // per-pixel frame stamp (brush dedup, see applyAt)
@@ -429,6 +431,16 @@ function forwardAll(ch) {
   reV = rVc; imV = iVc;
   reV0 = new Float32Array(reV); imV0 = new Float32Array(imV);
 
+  // U/V are never edited, so inverse-FFT them ONCE now and keep them in the
+  // spatial domain. Every paint frame only IFFTs Y and reuses uSpatial/vSpatial,
+  // cutting the per-frame cost from 3 IFFTs to 1 (big latency win while painting).
+  uSpatial = new Float32Array(n), /* uI */ new Float32Array(n);
+  { const ui = new Float32Array(n);
+    halfShift(reU, imU, uSpatial, ui); fft2D(uSpatial, ui, true); }
+  vSpatial = new Float32Array(n);
+  { const vi = new Float32Array(n);
+    halfShift(reV, imV, vSpatial, vi); fft2D(vSpatial, vi, true); }
+
   // Fixed log scale (max of the original Y magnitude): stops the
   // spectrum from "auto-brightening" as we attenuate regions.
   logMagMax = 1e-6;
@@ -462,11 +474,16 @@ function inverseMain() {
   drawSpatial(yR, uR, vR);
 }
 
-// Worker result: inverse FFTs (1/N²-scaled) of the spectra sent.
+// Worker result: the worker IFFTs only Y (1/N²-scaled) and returns yR;
+// U/V are reused from the spatial domain on the main thread.
+// On arrival, clear the in-flight flag; if a newer spectrum was queued while
+// we were busy (fftSeq advanced past our token), re-dispatch immediately so
+// the freshest paint is never more than one IFFT behind.
 function onWorkerResult(e) {
-  const d = e.data;                   // { tok, yR, uR, vR } as Float32Arrays
-  if (d.tok !== fftSeq) return;       // stale: a newer cycle superseded it
-  drawSpatial(d.yR, d.uR, d.vR);
+  fftPending = false;
+  const d = e.data;                   // { tok, yR }
+  if (d.tok !== fftSeq) { inverseFFT(); return; }  // stale: re-dispatch newest
+  drawSpatial(d.yR, uSpatial, vSpatial);
 }
 
 // YUV (BT.601) → RGB into the spatial ImageData, clamped to 0..255.
@@ -488,7 +505,7 @@ function drawSpatial(yR, uR, vR) {
     const uu = uR[i] - 128, vv = vR[i] - 128;
     const r = yy + vv * 1.140;
     const g = yy - uu * 0.394 - vv * 0.581;
-    const b = yy + vv * 1.402;
+    const b = yy + uu * 1.772;
     d[p]     = r > 255 ? 255 : r < 0 ? 0 : r;
     d[p + 1] = g > 255 ? 255 : g < 0 ? 0 : g;
     d[p + 2] = b > 255 ? 255 : b < 0 ? 0 : b;
@@ -500,17 +517,21 @@ function drawSpatial(yR, uR, vR) {
 // Dispatch the next IFFT: worker when available, main thread otherwise.
 // Bumps fftSeq once; the captured token travels with the request so a
 // late result is dropped if a newer cycle has since started.
+// Coalescing: at most ONE request in flight at a time. While one is pending,
+// further calls just bump fftSeq (marking the in-flight one stale); the
+// worker's onmessage re-dispatches with the freshest spectrum. This stops
+// the worker queue from accumulating stale work while painting fast.
+let fftPending = false;          // true while a worker IFFT is in flight
 function inverseFFT() {
   fftSeq++;
   const tok = fftSeq;
   if (worker) {
-    const n = N * N;
-    const yR = re.slice(), yI = im.slice();
-    const uR = reU.slice(), uI = imU.slice();
-    const vR = reV.slice(), vI = imV.slice();
+    if (fftPending) return;      // one already running; onmessage will re-dispatch
+    fftPending = true;
+    const yR = re.slice(), yI = im.slice();   // only Y needs re-IFFing each frame
     worker.postMessage(
-      { tok, N, yR, yI, uR, uI, vR, vI },
-      [yR.buffer, yI.buffer, uR.buffer, uI.buffer, vR.buffer, vI.buffer]
+      { tok, N, yR, yI },
+      [yR.buffer, yI.buffer]
     );
   } else {
     inverseMain();
@@ -524,7 +545,7 @@ function inverseFFT() {
 const WORKER_SRC = `
 "use strict";
 onmessage = (e) => {
-  const { tok, N, yR, yI, uR, uI, vR, vI } = e.data;
+  const { tok, N, yR, yI } = e.data;
   const n = N * N, half = N >> 1, mask = N - 1;
   const twRe = new Float32Array(half), twIm = new Float32Array(half);
   for (let k = 0; k < half; k++) { twRe[k] = Math.cos(2*Math.PI*k/N); twIm[k] = Math.sin(2*Math.PI*k/N); }
@@ -551,8 +572,8 @@ onmessage = (e) => {
     const s = 1/(N*N);
     for (let i = 0; i < n; i++) { rr[i]*=s; ii[i]*=s; }
   }
-  inv(yR, yI); inv(uR, uI); inv(vR, vI);
-  postMessage({ tok, yR, uR, vR }, [yR.buffer, uR.buffer, vR.buffer]);
+  inv(yR, yI);
+  postMessage({ tok, yR }, [yR.buffer]);
 };
 `;
 
