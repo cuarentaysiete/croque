@@ -458,20 +458,15 @@ function forwardAll(ch) {
 let fftSeq = 0;
 let worker = null;
 
-// Main-thread inverse for all three channels → spatial canvas.
+// Main-thread inverse: only Y is IFFTed each frame; U/V are reused from the
+// spatial domain (computed once at load) — saves 2 IFFTs per frame.
 function inverseMain() {
   const n = N * N, tok = fftSeq;
   const yR = new Float32Array(n), yI = new Float32Array(n);
-  halfShift(re, im, yR, yI);          // ifftshift
+  halfShift(re, im, yR, yI);          // ifftshift (centered -> natural order)
   fft2D(yR, yI, true);                // IFFT (scales by 1/N²)
-  const uR = new Float32Array(n), uI = new Float32Array(n);
-  halfShift(reU, imU, uR, uI);
-  fft2D(uR, uI, true);
-  const vR = new Float32Array(n), vI = new Float32Array(n);
-  halfShift(reV, imV, vR, vI);
-  fft2D(vR, vI, true);
   if (tok !== fftSeq) return;         // superseded by a newer cycle
-  drawSpatial(yR, uR, vR);
+  drawSpatial(yR, uSpatial, vSpatial);
 }
 
 // Worker result: the worker IFFTs only Y (1/N²-scaled) and returns yR;
@@ -566,7 +561,11 @@ onmessage = (e) => {
   }
   // ifftshift (== fftshift for N/2 shift) then IFFT; 1/N² scale.
   function inv(rr, ii) {
-    for (let y = 0; y < N; y++) { const sr = ((y+half)&mask)*N, dr = y*N; for (let x = 0; x < N; x++) { const s = sr+((x+half)&mask), d = dr+x; const tr=rr[s], ti=ii[s]; rr[s]=0; ii[s]=0; rr[d]=tr; ii[d]=ti; } }
+    // ifftshift via a temp buffer (the shift is a permutation; an in-place
+    // copy-&-zero corrupts cells that are both a source and a destination).
+    const tr = new Float32Array(n), ti = new Float32Array(n);
+    for (let y = 0; y < N; y++) { const sr = ((y+half)&mask)*N, dr = y*N; for (let x = 0; x < N; x++) { const s = sr+((x+half)&mask), d = dr+x; tr[d]=rr[s]; ti[d]=ii[s]; } }
+    rr.set(tr); ii.set(ti);
     for (let y = 0; y < N; y++) fft1D(rr, ii, y*N, 1, true);
     for (let x = 0; x < N; x++) fft1D(rr, ii, x, N, true);
     const s = 1/(N*N);
@@ -582,17 +581,22 @@ function startWorker() {
     const blob = new Blob([WORKER_SRC], { type: "text/javascript" });
     const url = URL.createObjectURL(blob);
     worker = new Worker(url);
-    URL.revokeObjectURL(url);
+    // NOTE: do NOT revoke `url` here. The worker loads its script lazily;
+    // revoking before the load completes makes the worker error out and die.
+    // We keep the URL alive for the worker's lifetime (one small blob URL).
     worker.onmessage = onWorkerResult;
     worker.onerror = (e) => {
-      // Worker failed: fall back to the main thread for this session.
+      // Worker failed to load or crashed: fall back to the main thread.
       console.warn("FFT worker unavailable, using main thread:", e.message);
-      worker.terminate();
-      worker = null;
+      const dead = worker; worker = null;
+      fftPending = false;                       // unstick the coalescing flag
+      try { dead.terminate(); } catch {}
+      if (hasImage) inverseMain();              // render the pending spectrum now
     };
   } catch (err) {
     console.warn("Web Workers unavailable, using main thread:", err.message);
     worker = null;
+    fftPending = false;
   }
 }
 startWorker();
